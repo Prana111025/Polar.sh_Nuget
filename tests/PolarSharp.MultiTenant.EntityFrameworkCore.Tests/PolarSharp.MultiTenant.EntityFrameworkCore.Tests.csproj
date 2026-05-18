@@ -23,12 +23,13 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-    <!-- v1.2.x Phase 2a/2b: Testcontainers infrastructure for end-to-end provider integration
-         tests. The provider-specific packages (MsSql, PostgreSql) transitively pull the
+    <!-- v1.2.x Phase 2a/2b/2c: Testcontainers infrastructure for end-to-end provider integration
+         tests. The provider-specific packages (MsSql, PostgreSql, MariaDb) transitively pull the
          Testcontainers.* base package, but we pin all of them so the central package-version
          table stays explicit. Integration tests are tagged [Trait("Category", "Integration")]
          and filtered out of fast unit-only runs. -->
     <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.MariaDb" />
     <PackageReference Include="Testcontainers.MsSql" />
     <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
@@ -42,6 +43,7 @@
     <ProjectReference Include="..\..\src\PolarSharp.MultiTenant.EntityFrameworkCore.SqlServer\PolarSharp.MultiTenant.EntityFrameworkCore.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\PolarSharp.MultiTenant.EntityFrameworkCore.Sqlite\PolarSharp.MultiTenant.EntityFrameworkCore.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\PolarSharp.MultiTenant.EntityFrameworkCore.PostgreSQL\PolarSharp.MultiTenant.EntityFrameworkCore.PostgreSQL.csproj" />
+    <ProjectReference Include="..\..\src\PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb\PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
 
