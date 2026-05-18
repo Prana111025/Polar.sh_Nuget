@@ -58,6 +58,9 @@
     <PackageVersion Include="FsCheck.Xunit" Version="3.3.3" />
     <!-- Integration test host -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.7" />
+    <!-- v1.2.x Phase 2: Testcontainers infrastructure for end-to-end provider integration tests -->
+    <PackageVersion Include="Testcontainers" Version="4.11.0" />
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.11.0" />
     <!-- Benchmarks -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <!-- v1.3.0 expansion: MariaDB / MySQL provider (Oracle's official EF Core 10 build; Pomelo has not yet shipped EF Core 10) -->

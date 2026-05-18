@@ -22,6 +22,12 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- v1.2.x Phase 2a: Testcontainers infrastructure for end-to-end provider integration
+         tests. The MsSql package transitively pulls Testcontainers.* base packages, but we
+         pin both so the central package-version table stays explicit. Integration tests are
+         tagged [Trait("Category", "Integration")] and filtered out of fast unit-only runs. -->
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.MsSql" />
   </ItemGroup>
 
   <ItemGroup>
