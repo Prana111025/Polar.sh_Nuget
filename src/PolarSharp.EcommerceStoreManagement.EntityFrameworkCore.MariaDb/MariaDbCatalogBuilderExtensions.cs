@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PolarSharp.EcommerceStoreManagement.EntityFrameworkCore;
+using PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb;
 
 namespace PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.MariaDb;
 
@@ -30,6 +32,10 @@ public static class MariaDbCatalogBuilderExtensions
         {
             opts.UseMySQL(connectionString, mysql =>
                 mysql.MigrationsAssembly(typeof(MariaDbCatalogBuilderExtensions).Assembly.GetName().Name));
+            // MariaDB-compatibility for the EF migrations lock. See
+            // MariaDbCompatibleHistoryRepository in the base MariaDb tenant package for
+            // why every MariaDb provider package needs this replacement.
+            opts.ReplaceService<IHistoryRepository, MariaDbCompatibleHistoryRepository>();
             // V20-013 hook: attach the audit-log interceptor when registered.
             var auditInterceptor = sp.GetService<AuditLogSaveChangesInterceptor>();
             if (auditInterceptor is not null) opts.AddInterceptors(auditInterceptor);

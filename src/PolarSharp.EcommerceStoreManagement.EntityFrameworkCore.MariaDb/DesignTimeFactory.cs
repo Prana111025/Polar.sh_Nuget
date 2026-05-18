@@ -2,9 +2,11 @@ using Finbuckle.MultiTenant;
 using Finbuckle.MultiTenant.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using PolarSharp.EcommerceStoreManagement.EntityFrameworkCore;
 using PolarSharp.MultiTenant;
+using PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb;
 
 namespace PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.MariaDb;
 
@@ -18,6 +20,7 @@ public sealed class PolarCatalogDbContextMariaDbDesignTimeFactory : IDesignTimeD
             .UseMySQL(
                 "Server=design-time;Database=polar_catalog_design;User Id=design;Password=design;",
                 b => b.MigrationsAssembly(typeof(PolarCatalogDbContextMariaDbDesignTimeFactory).Assembly.GetName().Name))
+            .ReplaceService<IHistoryRepository, MariaDbCompatibleHistoryRepository>()
             .Options;
         return new PolarCatalogDbContext(options, DesignTimeServices.Build());
     }

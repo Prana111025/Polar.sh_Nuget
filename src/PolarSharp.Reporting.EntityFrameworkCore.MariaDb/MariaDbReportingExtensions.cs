@@ -2,8 +2,10 @@ using Finbuckle.MultiTenant;
 using Finbuckle.MultiTenant.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using PolarSharp.MultiTenant;
+using PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb;
 using PolarSharp.Reporting;
 using PolarSharp.Reporting.EntityFrameworkCore;
 
@@ -27,8 +29,14 @@ public static class MariaDbReportingExtensions
         ArgumentException.ThrowIfNullOrEmpty(connectionString);
 
         services.AddDbContext<PolarReportingDbContext>(opts =>
+        {
             opts.UseMySQL(connectionString, mysql =>
-                mysql.MigrationsAssembly(typeof(MariaDbReportingExtensions).Assembly.GetName().Name)));
+                mysql.MigrationsAssembly(typeof(MariaDbReportingExtensions).Assembly.GetName().Name));
+            // MariaDB-compatibility for the EF migrations lock. See
+            // MariaDbCompatibleHistoryRepository in the base MariaDb tenant package for
+            // why every MariaDb provider package needs this replacement.
+            opts.ReplaceService<IHistoryRepository, MariaDbCompatibleHistoryRepository>();
+        });
         services.AddHealthChecks()
             .AddDbContextCheck<PolarReportingDbContext>(name: "polar-reporting-sql", tags: ["polar-sql", "polar-reporting"]);
         services.AddScoped<IPolarReportingClient, EfPolarReportingClient>();
@@ -45,6 +53,7 @@ public sealed class PolarReportingDbContextMariaDbDesignTimeFactory : IDesignTim
         var options = new DbContextOptionsBuilder<PolarReportingDbContext>()
             .UseMySQL("Server=design-time;Database=polar_reporting_design;User Id=design;Password=design;",
                 b => b.MigrationsAssembly(typeof(PolarReportingDbContextMariaDbDesignTimeFactory).Assembly.GetName().Name))
+            .ReplaceService<IHistoryRepository, MariaDbCompatibleHistoryRepository>()
             .Options;
         return new PolarReportingDbContext(options, DesignTimeServices.Build());
     }

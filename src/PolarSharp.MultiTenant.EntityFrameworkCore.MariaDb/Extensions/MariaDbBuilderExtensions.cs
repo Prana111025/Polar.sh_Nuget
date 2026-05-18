@@ -1,5 +1,6 @@
 using Finbuckle.MultiTenant.Abstractions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PolarSharp;
@@ -59,8 +60,19 @@ public static class MariaDbBuilderExtensions
         EfTenantStoreBuilderExtensions.AddCoreServices(builder.Services, builder.Configuration);
 
         builder.Services.AddDbContext<PolarTenantDbContext>(opts =>
+        {
             opts.UseMySQL(connectionString, mysql =>
-                mysql.MigrationsAssembly(typeof(MariaDbBuilderExtensions).Assembly.GetName().Name)));
+                mysql.MigrationsAssembly(typeof(MariaDbBuilderExtensions).Assembly.GetName().Name));
+            // Oracle's MySql.EntityFrameworkCore acquires the EF migrations lock with
+            // SELECT GET_LOCK('__EFMigrationsLock', -1). On MySQL the -1 timeout returns 1;
+            // on MariaDB the same call returns NULL and the provider's (long)scalar cast
+            // throws InvalidCastException, breaking any host that runs MigrateAsync on
+            // first start-up. The decorator substitutes a non-negative timeout that returns
+            // 1 on both engines while preserving real concurrent-migrator safety. See
+            // MariaDbCompatibleHistoryRepository's XML docs for the full background and the
+            // exit criterion (Pomelo .NET 10 build OR Oracle upstream fix).
+            opts.ReplaceService<IHistoryRepository, MariaDbCompatibleHistoryRepository>();
+        });
         builder.Services.AddScoped<IMultiTenantStore<PolarTenantInfo>, EfMultiTenantStore>();
 
         // MariaDB-specific single-tenant -> MT upgrade migrator. Always registered;

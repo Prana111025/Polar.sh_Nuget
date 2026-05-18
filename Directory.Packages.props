@@ -65,7 +65,11 @@
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.11.0" />
     <!-- Benchmarks -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
-    <!-- v1.3.0 expansion: MariaDB / MySQL provider (Oracle's official EF Core 10 build; Pomelo has not yet shipped EF Core 10) -->
+    <!-- v1.3.0 expansion: MariaDB / MySQL provider (Oracle's official EF Core 10 build; Pomelo has not yet shipped
+         EF Core 10). The 5 PolarSharp MariaDb packages ship a custom MariaDbCompatibleHistoryRepository decorator
+         (in PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb) to work around Oracle's GET_LOCK(-1)-returns-NULL
+         bug on MariaDB. Switch to Pomelo as soon as it ships .NET 10 support; the decorator becomes unnecessary
+         at that point. -->
     <PackageVersion Include="MySql.EntityFrameworkCore" Version="10.0.7" />
     <!-- v1.3.0 expansion: Cosmos DB provider -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Cosmos" Version="10.0.7" />

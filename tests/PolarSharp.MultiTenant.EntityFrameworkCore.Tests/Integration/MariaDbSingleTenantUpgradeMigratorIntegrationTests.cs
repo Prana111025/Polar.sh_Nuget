@@ -1,10 +1,8 @@
 using Finbuckle.MultiTenant.Abstractions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PolarSharp.MultiTenant;
 using PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb;
@@ -81,13 +79,13 @@ namespace PolarSharp.MultiTenant.EntityFrameworkCore.Tests.Integration;
 /// <c>SELECT GET_LOCK('__EFMigrationsLock', -1)</c>. On MySQL the negative timeout means
 /// "wait forever" and returns the bigint <c>1</c>. On MariaDB the same call is documented
 /// to return <c>NULL</c>, which the provider then tries to cast to <see cref="long"/> and
-/// throws <see cref="InvalidCastException"/>. The test harness replaces
-/// <see cref="IHistoryRepository"/> with <see cref="MariaDbCompatibleHistoryRepository"/>
-/// (a decorator that delegates everything to Oracle's internal repository EXCEPT the lock
-/// acquisition, which becomes a no-op). The no-op is safe in a single-connection
-/// integration test where no concurrent migrator is racing for the lock. Production hosts
-/// are unaffected because they do not call <c>MigrateAsync</c> through PolarSharp wiring —
-/// they apply migrations through their own tooling.
+/// throws <see cref="InvalidCastException"/>. The fix lives in production code: every
+/// MariaDb provider package's <c>Use[X]MariaDb(...)</c> extension method calls
+/// <c>opts.ReplaceService&lt;IHistoryRepository, MariaDbCompatibleHistoryRepository&gt;()</c>
+/// to substitute a non-negative GET_LOCK timeout that returns 1 on both MySQL and MariaDB.
+/// This integration test exercises the same wiring that production hosts get — the very
+/// fact that <c>MigrateAsync</c> succeeds against a real MariaDB container is the proof
+/// that the production fix works.
 /// </para>
 /// <para>
 /// <strong>Prerequisite.</strong> Docker must be running on the host. The
@@ -125,17 +123,13 @@ public sealed class MariaDbSingleTenantUpgradeMigratorIntegrationTests : IAsyncL
             opts.UseMySQL(
                 _container.GetConnectionString(),
                 mysql => mysql.MigrationsAssembly(typeof(MariaDbBuilderExtensions).Assembly.GetName().Name));
-            // Workaround for Oracle MySql.EntityFrameworkCore 10.0.7 + MariaDB compatibility.
-            // The provider's MySQLHistoryRepository.AcquireDatabaseLockAsync issues
-            // SELECT GET_LOCK('__EFMigrationsLock', -1). On MySQL a negative timeout means
-            // "wait forever" and returns 1; on MariaDB a negative timeout is documented to
-            // return NULL — and Oracle's provider then throws InvalidCastException trying to
-            // cast DBNull to Int64. Replacing IHistoryRepository with a decorator that hands
-            // out a no-op IMigrationsDatabaseLock keeps every other code path identical
-            // (table creation, applied-migration reads, insert/delete scripts all delegate
-            // to the underlying MySQLHistoryRepository) while skipping only the broken lock
-            // acquisition. Safe in single-connection integration tests where no concurrent
-            // migrator is racing us for the lock.
+            // NOTE: in production the IHistoryRepository is replaced by
+            // MariaDbCompatibleHistoryRepository inside UseMariaDb(...). This test wires the
+            // DbContext directly (bypassing UseMariaDb) so it does NOT pick up that
+            // replacement automatically. To keep the test exercising the SAME production
+            // service shape, mirror the registration here. If this line is removed the test
+            // will fail with InvalidCastException on MigrateAsync — proving the production
+            // fix is the only thing keeping the lock path alive on MariaDB.
             opts.ReplaceService<IHistoryRepository, MariaDbCompatibleHistoryRepository>();
         });
 
@@ -356,131 +350,4 @@ public sealed class MariaDbSingleTenantUpgradeMigratorIntegrationTests : IAsyncL
         Server = PolarServer.Sandbox,
         SiteManagerEmail = "integration-test@example.com",
     };
-}
-
-/// <summary>
-/// Test-only decorator for <see cref="IHistoryRepository"/> that delegates every operation
-/// to Oracle's internal <c>MySQLHistoryRepository</c> EXCEPT the migration-lock acquisition,
-/// which is replaced with a no-op.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <strong>Why this exists.</strong> Oracle's <c>MySql.EntityFrameworkCore</c> 10.0.7
-/// implements <c>AcquireDatabaseLockAsync</c> by issuing
-/// <c>SELECT GET_LOCK('__EFMigrationsLock', -1)</c>. On MySQL a negative timeout means
-/// "wait forever" and the function returns the bigint <c>1</c>. On MariaDB the function is
-/// documented to return <c>NULL</c> for any negative timeout, so the provider's
-/// <c>(long)scalar</c> cast throws <see cref="InvalidCastException"/> and the migration
-/// never starts. The bug lives entirely in the Oracle provider's MySQL-only assumption —
-/// production code under <see cref="MariaDbBuilderExtensions"/> never asks for a migration
-/// lock because production hosts apply migrations through other tooling.
-/// </para>
-/// <para>
-/// <strong>What we do here.</strong> Replace <see cref="IHistoryRepository"/> via
-/// <c>DbContextOptionsBuilder.ReplaceService</c> so EF Core constructs an instance of this
-/// type instead of <c>MySQLHistoryRepository</c>. We still need the Oracle-provider's
-/// implementation for table creation, applied-migration reads, and insert/delete script
-/// generation — so we resolve the original <c>MySQLHistoryRepository</c> via the dependency
-/// container and delegate every method to it. Only <see cref="AcquireDatabaseLock"/> and
-/// <see cref="AcquireDatabaseLockAsync"/> are overridden to return a no-op lock.
-/// </para>
-/// <para>
-/// <strong>Why the no-op lock is safe in this test context.</strong> The integration test
-/// holds a single <see cref="PolarTenantDbContext"/> at any time and no concurrent migrator
-/// is running. The migration lock exists to serialise concurrent <c>MigrateAsync</c> calls;
-/// in a one-shot test fixture there is nothing to serialise against.
-/// </para>
-/// </remarks>
-internal sealed class MariaDbCompatibleHistoryRepository : IHistoryRepository
-{
-    private readonly IHistoryRepository _inner;
-
-    /// <summary>Builds the decorator by activating Oracle's <c>MySQLHistoryRepository</c> manually.</summary>
-    /// <param name="dependencies">EF Core history-repository dependencies (forwarded to the inner instance).</param>
-    public MariaDbCompatibleHistoryRepository(HistoryRepositoryDependencies dependencies)
-    {
-        var mysqlHistoryRepositoryType = typeof(MySql.EntityFrameworkCore.Infrastructure.MySQLDbContextOptionsBuilder).Assembly
-            .GetType("MySql.EntityFrameworkCore.Migrations.Internal.MySQLHistoryRepository")
-            ?? throw new InvalidOperationException(
-                "Could not locate MySql.EntityFrameworkCore.Migrations.Internal.MySQLHistoryRepository " +
-                "via reflection — the Oracle MySql.EntityFrameworkCore package layout may have changed.");
-        _inner = (IHistoryRepository)Activator.CreateInstance(mysqlHistoryRepositoryType, dependencies)!;
-    }
-
-    /// <inheritdoc/>
-    public LockReleaseBehavior LockReleaseBehavior => _inner.LockReleaseBehavior;
-
-    /// <inheritdoc/>
-    public bool Exists() => _inner.Exists();
-
-    /// <inheritdoc/>
-    public Task<bool> ExistsAsync(CancellationToken cancellationToken = default)
-        => _inner.ExistsAsync(cancellationToken);
-
-    /// <inheritdoc/>
-    public void Create() => _inner.Create();
-
-    /// <inheritdoc/>
-    public Task CreateAsync(CancellationToken cancellationToken = default)
-        => _inner.CreateAsync(cancellationToken);
-
-    /// <inheritdoc/>
-    public bool CreateIfNotExists() => _inner.CreateIfNotExists();
-
-    /// <inheritdoc/>
-    public Task<bool> CreateIfNotExistsAsync(CancellationToken cancellationToken = default)
-        => _inner.CreateIfNotExistsAsync(cancellationToken);
-
-    /// <inheritdoc/>
-    public IReadOnlyList<HistoryRow> GetAppliedMigrations() => _inner.GetAppliedMigrations();
-
-    /// <inheritdoc/>
-    public Task<IReadOnlyList<HistoryRow>> GetAppliedMigrationsAsync(CancellationToken cancellationToken = default)
-        => _inner.GetAppliedMigrationsAsync(cancellationToken);
-
-    /// <inheritdoc/>
-    public string GetCreateScript() => _inner.GetCreateScript();
-
-    /// <inheritdoc/>
-    public string GetCreateIfNotExistsScript() => _inner.GetCreateIfNotExistsScript();
-
-    /// <inheritdoc/>
-    public string GetInsertScript(HistoryRow row) => _inner.GetInsertScript(row);
-
-    /// <inheritdoc/>
-    public string GetDeleteScript(string migrationId) => _inner.GetDeleteScript(migrationId);
-
-    /// <inheritdoc/>
-    public string GetBeginIfNotExistsScript(string migrationId) => _inner.GetBeginIfNotExistsScript(migrationId);
-
-    /// <inheritdoc/>
-    public string GetBeginIfExistsScript(string migrationId) => _inner.GetBeginIfExistsScript(migrationId);
-
-    /// <inheritdoc/>
-    public string GetEndIfScript() => _inner.GetEndIfScript();
-
-    /// <inheritdoc/>
-    public IMigrationsDatabaseLock AcquireDatabaseLock() => new NoOpMigrationsDatabaseLock(this);
-
-    /// <inheritdoc/>
-    public Task<IMigrationsDatabaseLock> AcquireDatabaseLockAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult<IMigrationsDatabaseLock>(new NoOpMigrationsDatabaseLock(this));
-
-    /// <summary>No-op migration lock — disposing it does nothing, reacquiring it returns itself.</summary>
-    private sealed class NoOpMigrationsDatabaseLock(IHistoryRepository historyRepository) : IMigrationsDatabaseLock
-    {
-        public IHistoryRepository HistoryRepository { get; } = historyRepository;
-
-        public IMigrationsDatabaseLock ReacquireIfNeeded(bool migrationsAcquired, bool? lockReacquired) => this;
-
-        public Task<IMigrationsDatabaseLock> ReacquireIfNeededAsync(
-            bool migrationsAcquired,
-            bool? lockReacquired,
-            CancellationToken cancellationToken = default)
-            => Task.FromResult<IMigrationsDatabaseLock>(this);
-
-        public void Dispose() { }
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
 }

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb;
 using PolarSharp.MultiTenant.Identity;
 using PolarSharp.MultiTenant.Identity.Extensions;
 
@@ -61,8 +63,14 @@ public static class MariaDbIdentityBuilderExtensions
     private static PolarIdentityBuilder RegisterDbContext(PolarIdentityBuilder builder, string connectionString)
     {
         builder.Services.AddDbContext<PolarUserDbContext>(opts =>
+        {
             opts.UseMySQL(connectionString, mysql =>
-                mysql.MigrationsAssembly(typeof(MariaDbIdentityBuilderExtensions).Assembly.GetName().Name)));
+                mysql.MigrationsAssembly(typeof(MariaDbIdentityBuilderExtensions).Assembly.GetName().Name));
+            // MariaDB-compatibility for the EF migrations lock. See
+            // MariaDbCompatibleHistoryRepository in the base MariaDb tenant package for
+            // why every MariaDb provider package needs this replacement.
+            opts.ReplaceService<IHistoryRepository, MariaDbCompatibleHistoryRepository>();
+        });
 
         builder.Services.AddHealthChecks()
             .AddDbContextCheck<PolarUserDbContext>(

@@ -34,10 +34,15 @@ namespace PolarSharp.MultiTenant
         public PolarTenantInfo() { }
         public string Id { get; set; }
         public string Identifier { get; set; }
+        public bool IsActive { get; }
         public string? Name { get; set; }
         public string PolarAccessToken { get; set; }
         public string PolarOrganizationId { get; set; }
         public PolarSharp.PolarServer Server { get; set; }
+        public string SiteManagerEmail { get; set; }
+        public bool SiteManagerEmailVerified { get; set; }
+        public string? SiteManagerPhone { get; set; }
+        public PolarSharp.MultiTenant.Lifecycle.TenantStatus Status { get; set; }
         public System.Guid TenantId { get; }
         public string? WebhookSecret { get; set; }
     }
@@ -47,6 +52,68 @@ namespace PolarSharp.MultiTenant
         Route = 1,
         Hostname = 2,
         Claim = 3,
+    }
+}
+namespace PolarSharp.MultiTenant.Lifecycle
+{
+    public sealed class DefaultTenantStatusService : PolarSharp.MultiTenant.Lifecycle.ITenantStatusService
+    {
+        public DefaultTenantStatusService(Finbuckle.MultiTenant.Abstractions.IMultiTenantStore<PolarSharp.MultiTenant.PolarTenantInfo> store, MediatR.IMediator mediator, Microsoft.Extensions.Logging.ILogger<PolarSharp.MultiTenant.Lifecycle.DefaultTenantStatusService> logger, Microsoft.Extensions.Options.IOptionsMonitor<PolarSharp.MultiTenant.Lifecycle.TenantStatusServiceOptions> options, System.TimeProvider clock) { }
+        public System.Threading.Tasks.Task<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult> DeactivateAsync(System.Guid tenantId, string reason, System.Guid? actorUserId = default, System.Threading.CancellationToken ct = default) { }
+        public System.Threading.Tasks.Task<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult> DeleteAsync(System.Guid tenantId, string reason, System.Guid? actorUserId = default, System.Threading.CancellationToken ct = default) { }
+        public System.Threading.Tasks.Task<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult> ReactivateAsync(System.Guid tenantId, System.Guid? actorUserId = default, System.Threading.CancellationToken ct = default) { }
+        public System.Threading.Tasks.Task<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult> SuspendAsync(System.Guid tenantId, string reason, System.Guid? actorUserId = default, System.Threading.CancellationToken ct = default) { }
+    }
+    public interface ITenantStatusService
+    {
+        System.Threading.Tasks.Task<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult> DeactivateAsync(System.Guid tenantId, string reason, System.Guid? actorUserId = default, System.Threading.CancellationToken ct = default);
+        System.Threading.Tasks.Task<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult> DeleteAsync(System.Guid tenantId, string reason, System.Guid? actorUserId = default, System.Threading.CancellationToken ct = default);
+        System.Threading.Tasks.Task<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult> ReactivateAsync(System.Guid tenantId, System.Guid? actorUserId = default, System.Threading.CancellationToken ct = default);
+        System.Threading.Tasks.Task<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult> SuspendAsync(System.Guid tenantId, string reason, System.Guid? actorUserId = default, System.Threading.CancellationToken ct = default);
+    }
+    public static class TenantLifecycleServiceCollectionExtensions
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddPolarTenantLifecycle(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, Microsoft.Extensions.Configuration.IConfiguration configuration) { }
+    }
+    public enum TenantStatus
+    {
+        Active = 0,
+        Suspended = 1,
+        Inactive = 2,
+        Deleted = 3,
+    }
+    public sealed class TenantStatusChangeResult : System.IEquatable<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangeResult>
+    {
+        public TenantStatusChangeResult() { }
+        public string? FailureReason { get; init; }
+        public required PolarSharp.MultiTenant.Lifecycle.TenantStatus NewStatus { get; init; }
+        public required System.DateTimeOffset OccurredAt { get; init; }
+        public required PolarSharp.MultiTenant.Lifecycle.TenantStatus PreviousStatus { get; init; }
+        public required bool Success { get; init; }
+        public required bool WasIdempotentNoOp { get; init; }
+    }
+    public sealed class TenantStatusChangedNotification : MediatR.INotification, System.IEquatable<PolarSharp.MultiTenant.Lifecycle.TenantStatusChangedNotification>
+    {
+        public TenantStatusChangedNotification() { }
+        public required System.Guid? ActorUserId { get; init; }
+        public required PolarSharp.MultiTenant.Lifecycle.TenantStatus NewStatus { get; init; }
+        public required System.DateTimeOffset OccurredAt { get; init; }
+        public required PolarSharp.MultiTenant.Lifecycle.TenantStatus PreviousStatus { get; init; }
+        public required string Reason { get; init; }
+        public required string SiteManagerEmail { get; init; }
+        public required bool SiteManagerEmailVerified { get; init; }
+        public required string? SiteManagerPhone { get; init; }
+        public required System.Guid TenantId { get; init; }
+        public required string TenantIdentifier { get; init; }
+        public required string? TenantName { get; init; }
+    }
+    public sealed class TenantStatusServiceOptions
+    {
+        public const string SectionName = "PolarSharp:MultiTenant:TenantStatus";
+        public TenantStatusServiceOptions() { }
+        public int DeletedTenantRetentionDays { get; set; }
+        public bool RequireVerifiedEmailForSuspension { get; set; }
+        public bool SuspendUnverifiedTenantsAnyway { get; set; }
     }
 }
 namespace PolarSharp.MultiTenant.StrategyOptions
