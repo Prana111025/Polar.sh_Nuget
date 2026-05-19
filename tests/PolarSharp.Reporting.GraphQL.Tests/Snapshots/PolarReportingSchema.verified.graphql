@@ -1,0 +1,513 @@
+﻿schema {
+  query: PolarReportingQuery
+}
+
+"An active benefit grant."
+type ActiveEntitlement {
+  benefitId: String!
+  benefitName: String!
+  benefitKind: String!
+  grantedAt: DateTime!
+}
+
+"One benefit grant emitted by an order."
+type BenefitGrantRow {
+  benefitId: String!
+  benefitName: String!
+  benefitKind: String!
+  isGranted: Boolean!
+  grantedAt: DateTime
+  revokedAt: DateTime
+}
+
+"Retention curve for one signup cohort."
+type CohortRetention {
+  "First day of the cohort's signup month."
+  cohortMonth: DateTime!
+  "Customer count at month 0."
+  startingCustomers: Int!
+  "Retained-customer count for months 1..N (RetainedByMonth[0] = month 1)."
+  retainedByMonth: [Int!]!
+}
+
+"Per-customer entitlement view — what benefits the named customer currently has access to."
+type CustomerEntitlementsReport {
+  "Polar customer id."
+  customerId: String!
+  "Customer email (snapshotted)."
+  customerEmail: String!
+  "Currently-granted benefits."
+  activeBenefits: [ActiveEntitlement!]!
+  "Previously-granted benefits that have been revoked."
+  revokedBenefits: [RevokedEntitlement!]!
+}
+
+"One row in Segments."
+type CustomerLifecycleSegment {
+  "e.g. \"new\", \"active\", \"churned\"."
+  segmentName: String!
+  "Customers in this segment."
+  customerCount: Int!
+  "Revenue attributable to this segment (minor units)."
+  totalRevenue: Long!
+}
+
+"Top-level row for the \"all customers\" grid."
+type CustomerListRow {
+  "Polar customer id."
+  customerId: String!
+  "Customer email."
+  email: String!
+  "Customer name. May be null for anonymous \/ guest customers."
+  name: String
+  "Pre-aggregated count of orders this customer has placed."
+  orderCount: Int!
+  "Pre-aggregated sum of net revenue (gross − refunded) across the customer's orders, in minor units."
+  lifetimeValue: Long!
+  "ISO 4217 currency code for LifetimeValue."
+  currency: String!
+  "UTC of the customer's first order. null when they've never ordered."
+  firstOrderAt: DateTime
+  "UTC of the customer's most recent order."
+  lastOrderAt: DateTime
+  "UTC when the customer record was created in Polar."
+  createdAt: DateTime!
+}
+
+"Aggregate customer roll-up."
+type CustomerReport {
+  "Total customers in the tenant."
+  totalCustomers: Int!
+  "Customers first seen in the period."
+  newCustomers: Int!
+  "Mean lifetime value (net revenue per customer) in minor units."
+  averageLifetimeValue: Long!
+  "Breakdown of customers by lifecycle segment."
+  segments: [CustomerLifecycleSegment!]!
+}
+
+"""
+Operational error / audit report — aggregates PolarSharp's own observability metrics
+(webhook delivery failures, signature-verification rejects, circuit-breaker events,
+rate-limit hits, Polar API errors) PLUS the recent entries from Polar's own
+/v1/events/ stream.
+"""
+type ErrorAuditReport {
+  "Number of webhook deliveries that failed to be processed."
+  webhookDeliveryFailures: Int!
+  "Number of webhook payloads rejected for invalid HMAC signature."
+  signatureVerificationFailures: Int!
+  "Times the resilience pipeline's circuit breaker opened."
+  circuitBreakerOpenEvents: Int!
+  "Times Polar's rate limiter rejected our requests."
+  rateLimitHits: Int!
+  "Count of Polar API responses with non-2xx status (across all status codes)."
+  apiErrorsByStatus: Int!
+  "Recent platform events Polar's \/v1\/events\/ exposed for this organization."
+  recentPolarEvents: [PolarEventLogEntry!]!
+}
+
+"Bottom-level detail — appears when an operator opens one order row."
+type OrderDrilldownDetail {
+  "Polar order id."
+  orderId: String!
+  "Human-readable order number."
+  orderNumber: String!
+  "Polar customer id."
+  customerId: String!
+  "Customer email (snapshotted at order time)."
+  customerEmail: String!
+  "Polar wire-format status."
+  status: String!
+  "Total amount."
+  amount: Long!
+  "Tax amount."
+  taxAmount: Long!
+  "ISO 4217 currency code."
+  currency: String!
+  "Line items."
+  lineItems: [OrderLineItemRow!]!
+  "Refunds issued against this order."
+  refunds: [OrderRefundRow!]!
+  "Benefit grants emitted by this order."
+  benefitGrants: [BenefitGrantRow!]!
+  "URL to the hosted PDF invoice."
+  invoiceUrl: String
+  "UTC when the order was placed."
+  createdAt: DateTime!
+  "UTC when the order was fulfilled."
+  fulfilledAt: DateTime
+}
+
+"One line item on an order."
+type OrderLineItemRow {
+  productId: String!
+  productName: String!
+  priceId: String
+  quantity: Int!
+  unitAmount: Long!
+  lineTotal: Long!
+  discountAmount: Long!
+  taxAmount: Long!
+}
+
+"One refund issued against an order."
+type OrderRefundRow {
+  refundId: String!
+  amount: Long!
+  currency: String!
+  reason: String!
+  createdAt: DateTime!
+}
+
+"Aggregate order metrics — counts and fulfilment-latency stats."
+type OrderReport {
+  "Total orders in the period."
+  total: Int!
+  "Orders that have been fulfilled (Polar fulfilled_at is set)."
+  fulfilled: Int!
+  "Orders pending fulfilment."
+  pending: Int!
+  "Orders that failed (payment-failed, charge-rejected, etc.)."
+  failed: Int!
+  "Median time from created_at to fulfilled_at."
+  medianFulfillmentLatency: TimeSpan!
+  "Per-bucket counts for charting."
+  timeBuckets: [OrderTimeBucket!]!
+}
+
+"Mid-level row — appears when an operator opens one customer row."
+type OrderSummaryRow {
+  "Polar order id."
+  orderId: String!
+  "Human-readable order number."
+  orderNumber: String!
+  "Polar wire-format status."
+  status: String!
+  "Total amount in minor units."
+  amount: Long!
+  "Tax amount in minor units."
+  taxAmount: Long!
+  "Refunded amount in minor units (0 when the order has not been refunded)."
+  refundedAmount: Long!
+  "ISO 4217 currency code."
+  currency: String!
+  "Pre-aggregated count of line items on the order — drives whether the host shows a \"view items\" affordance."
+  lineItemCount: Int!
+  "URL to the hosted PDF invoice. May be null until Polar generates it."
+  invoiceUrl: String
+  "UTC when the order was placed."
+  createdAt: DateTime!
+  "UTC when the order was fulfilled. null for pending orders."
+  fulfilledAt: DateTime
+}
+
+"One bucket on the orders time-series chart."
+type OrderTimeBucket {
+  bucketStart: DateTime!
+  total: Int!
+  fulfilled: Int!
+  failed: Int!
+}
+
+type PagedResultOfCustomerListRow {
+  rows: [CustomerListRow!]!
+  totalCount: Int!
+  page: Int!
+  pageSize: Int!
+  hasMore: Boolean!
+}
+
+type PagedResultOfOrderSummaryRow {
+  rows: [OrderSummaryRow!]!
+  totalCount: Int!
+  page: Int!
+  pageSize: Int!
+  hasMore: Boolean!
+}
+
+"One row in RecentPolarEvents."
+type PolarEventLogEntry {
+  "Polar event id (evt_xxx)."
+  eventId: String!
+  "Polar event-type slug (e.g. \"order.created\")."
+  type: String!
+  "UTC when Polar recorded the event."
+  occurredAt: DateTime!
+  "Short host-rendered summary for display."
+  summary: String!
+}
+
+"""
+Hot Chocolate GraphQL Query type that mirrors IPolarReportingClient —
+every interface method is exposed as a single Query field. Resolvers unwrap the
+Result<T, PolarError> envelope; failures surface as a Hot Chocolate
+GraphQLException, the standard error path callers can decode from the
+errors array on every response.
+"""
+type PolarReportingQuery {
+  """
+  Aggregate transaction roll-up over a date range.
+  
+  **Returns:**
+  The transaction report on success.
+  """
+  transactions("The request shape mirroring TransactionReportRequest." input: TransactionReportRequestInput!): TransactionReport! @authorize(policy: "PolarSharp.Permission.ViewReports") @cost(weight: "10")
+  """
+  Subscription metrics — MRR / ARR / churn / cohort retention.
+  
+  **Returns:**
+  The subscription report on success.
+  """
+  subscriptions("The request shape mirroring SubscriptionReportRequest." input: SubscriptionReportRequestInput!): SubscriptionReport! @authorize(policy: "PolarSharp.Permission.ViewReports") @cost(weight: "10")
+  """
+  Order counts + fulfilment latency.
+  
+  **Returns:**
+  The order report on success.
+  """
+  orders("The request shape mirroring OrderReportRequest." input: OrderReportRequestInput!): OrderReport! @authorize(policy: "PolarSharp.Permission.ViewReports") @cost(weight: "10")
+  """
+  Customer roll-up + lifecycle segments.
+  
+  **Returns:**
+  The customer report on success.
+  """
+  customers("The request shape mirroring CustomerReportRequest." input: CustomerReportRequestInput!): CustomerReport! @authorize(policy: "PolarSharp.Permission.ViewReports") @cost(weight: "10")
+  """
+  Per-customer entitlement detail.
+  
+  **Returns:**
+  The customer entitlements report on success.
+  """
+  customerEntitlements("The Polar customer id to look up." customerId: String!): CustomerEntitlementsReport! @authorize(policy: "PolarSharp.Permission.ViewReports") @cost(weight: "10")
+  """
+  Operational error / audit roll-up. Requires ViewAuditLog.
+  
+  **Returns:**
+  The error audit report on success.
+  """
+  errorAudit("The request shape mirroring ErrorAuditRequest." input: ErrorAuditRequestInput!): ErrorAuditReport! @authorize(policy: "PolarSharp.Permission.ViewAuditLog") @cost(weight: "10")
+  """
+  Top-level drilldown — paged list of every customer in the tenant.
+  
+  **Returns:**
+  A paged result of customer rows on success.
+  """
+  listCustomers("The request shape mirroring CustomerListRequest." input: CustomerListRequestInput!): PagedResultOfCustomerListRow! @authorize(policy: "PolarSharp.Permission.ViewReports") @cost(weight: "10")
+  """
+  Mid-level drilldown — paged list of orders for one customer.
+  
+  **Returns:**
+  A paged result of order summary rows on success.
+  """
+  listOrdersForCustomer("The Polar customer id whose orders to list." customerId: String! "The request shape mirroring OrderListRequest." input: OrderListRequestInput!): PagedResultOfOrderSummaryRow! @authorize(policy: "PolarSharp.Permission.ViewReports") @cost(weight: "10")
+  """
+  Bottom-level drilldown — full detail for one order (line items + refunds + benefit grants).
+  
+  **Returns:**
+  The order drilldown detail on success.
+  """
+  orderDrilldown("The Polar order id to retrieve." orderId: String!): OrderDrilldownDetail! @authorize(policy: "PolarSharp.Permission.ViewReports") @cost(weight: "10")
+}
+
+"A revoked benefit grant."
+type RevokedEntitlement {
+  benefitId: String!
+  benefitName: String!
+  revokedAt: DateTime!
+  reason: String!
+}
+
+"Aggregate subscription metrics — MRR \/ ARR \/ churn for SaaS \/ recurring-revenue tenants."
+type SubscriptionReport {
+  "Monthly Recurring Revenue at the end of the period (minor units)."
+  mrr: Long!
+  "Annual Recurring Revenue (MRR × 12)."
+  arr: Long!
+  "Subscriptions in active or trialing status at period end."
+  activeSubscriptions: Int!
+  "New subscriptions started in the period."
+  newSubscriptions: Int!
+  "Subscriptions cancelled in the period."
+  canceledSubscriptions: Int!
+  "Churn rate (cancelled ÷ start-of-period active). 0.05 = 5%."
+  churnRate: Decimal!
+  "Revenue from upgrades (existing subscriptions changing to higher-tier products)."
+  expansionRevenue: Long!
+  "Per-cohort retention curves."
+  cohorts: [CohortRetention!]!
+}
+
+"One row in the top-products list."
+type TopProduct {
+  productId: String!
+  productName: String!
+  revenue: Long!
+  orderCount: Int!
+}
+
+"Aggregate transaction roll-up for a single tenant over a date range."
+type TransactionReport {
+  "UTC start of the period (inclusive)."
+  periodStart: DateTime!
+  "UTC end of the period (exclusive)."
+  periodEnd: DateTime!
+  "ISO 4217 currency code (reports are single-currency to keep totals comparable)."
+  currency: String!
+  "Total revenue in minor units before refunds."
+  grossRevenue: Long!
+  "Total amount refunded in minor units."
+  refundedAmount: Long!
+  "Net revenue (GrossRevenue − RefundedAmount) in minor units."
+  netRevenue: Long!
+  "Number of orders in the period."
+  orderCount: Int!
+  "Number of refunds issued in the period."
+  refundCount: Int!
+  "Average order value (GrossRevenue ÷ OrderCount) in minor units."
+  averageOrderValue: Long!
+  "Top-grossing products in the period."
+  topProducts: [TopProduct!]!
+  "Per-bucket revenue for charting (daily \/ weekly \/ monthly per the request)."
+  timeBuckets: [TransactionTimeBucket!]!
+}
+
+"One bucket on the time-series chart."
+type TransactionTimeBucket {
+  bucketStart: DateTime!
+  grossRevenue: Long!
+  netRevenue: Long!
+  orderCount: Int!
+}
+
+"GraphQL input mirroring CustomerListRequest."
+input CustomerListRequestInput {
+  "0-based page index."
+  page: Int! = 0
+  "Rows per page (server caps at 500)."
+  pageSize: Int! = 50
+  "Optional sort field. Per-query allow-list applies."
+  sortBy: String
+  "True for newest-first \/ largest-first sort."
+  sortDescending: Boolean! = true
+  "Optional substring filter on email or name."
+  searchTerm: String
+  "Lower bound on customer creation date."
+  createdAfter: DateTime
+  "Upper bound on customer creation date."
+  createdBefore: DateTime
+}
+
+"GraphQL input mirroring CustomerReportRequest."
+input CustomerReportRequestInput {
+  "Inclusive start of the reporting period (UTC)."
+  periodStart: DateTime!
+  "Exclusive end of the reporting period (UTC)."
+  periodEnd: DateTime!
+}
+
+"GraphQL input mirroring ErrorAuditRequest."
+input ErrorAuditRequestInput {
+  "Inclusive start of the reporting period (UTC)."
+  periodStart: DateTime!
+  "Exclusive end of the reporting period (UTC)."
+  periodEnd: DateTime!
+  "How many recent Polar events to include in the report."
+  recentEventCount: Int! = 50
+}
+
+"GraphQL input mirroring OrderListRequest."
+input OrderListRequestInput {
+  "0-based page index."
+  page: Int! = 0
+  "Rows per page (server caps at 500)."
+  pageSize: Int! = 50
+  "Optional sort field. Per-query allow-list applies."
+  sortBy: String
+  "True for newest-first \/ largest-first sort."
+  sortDescending: Boolean! = true
+  "Lower bound on order creation date."
+  createdAfter: DateTime
+  "Upper bound on order creation date."
+  createdBefore: DateTime
+  "Optional Polar wire-format status filter."
+  status: String
+}
+
+"GraphQL input mirroring OrderReportRequest."
+input OrderReportRequestInput {
+  "Inclusive start of the reporting period (UTC)."
+  periodStart: DateTime!
+  "Exclusive end of the reporting period (UTC)."
+  periodEnd: DateTime!
+  "Time-series bucket granularity."
+  granularity: TimeBucketGranularity! = DAILY
+}
+
+"GraphQL input mirroring SubscriptionReportRequest."
+input SubscriptionReportRequestInput {
+  "Inclusive start of the reporting period (UTC)."
+  periodStart: DateTime!
+  "Exclusive end of the reporting period (UTC)."
+  periodEnd: DateTime!
+  "ISO 4217 currency code."
+  currency: String!
+  "How many months of cohort-retention data to include."
+  cohortMonths: Int! = 12
+}
+
+"GraphQL input shape mirroring TransactionReportRequest."
+input TransactionReportRequestInput {
+  "Inclusive start of the reporting period (UTC)."
+  periodStart: DateTime!
+  "Exclusive end of the reporting period (UTC)."
+  periodEnd: DateTime!
+  "ISO 4217 currency code."
+  currency: String!
+  "Time-series bucket granularity."
+  granularity: TimeBucketGranularity! = DAILY
+  "How many entries to include in TopProducts."
+  topProductCount: Int! = 10
+}
+
+"Defines when a policy shall be executed."
+enum ApplyPolicy {
+  "Before the resolver was executed."
+  BEFORE_RESOLVER
+  "After the resolver was executed."
+  AFTER_RESOLVER
+  "The policy is applied in the validation step before the execution."
+  VALIDATION
+}
+
+"Granularity for time-series report buckets."
+enum TimeBucketGranularity {
+  "Daily buckets."
+  DAILY
+  "Weekly buckets (ISO-week aligned)."
+  WEEKLY
+  "Monthly buckets."
+  MONTHLY
+}
+
+"The authorize directive."
+directive @authorize("The name of the authorization policy that determines access to the annotated resource." policy: String "Roles that are allowed to access the annotated resource." roles: [String!] "Defines when when the authorize directive shall be applied.By default the authorize directives are applied during the validation phase." apply: ApplyPolicy! = BEFORE_RESOLVER) repeatable on OBJECT | FIELD_DEFINITION
+
+"The purpose of the `cost` directive is to define a `weight` for GraphQL types, fields, and arguments. Static analysis can use these weights when calculating the overall cost of a query or response."
+directive @cost("The `weight` argument defines what value to add to the overall cost for every appearance, or possible appearance, of a type, field, argument, etc." weight: String!) on SCALAR | OBJECT | FIELD_DEFINITION | ARGUMENT_DEFINITION | ENUM | INPUT_FIELD_DEFINITION
+
+"The `@specifiedBy` directive is used within the type system definition language to provide a URL for specifying the behavior of custom scalar definitions."
+directive @specifiedBy("The specifiedBy URL points to a human-readable specification. This field will only read a result for scalar types." url: String!) on SCALAR
+
+"The `DateTime` scalar represents an ISO-8601 compliant date time type."
+scalar DateTime @specifiedBy(url: "https:\/\/www.graphql-scalars.com\/date-time")
+
+"The `Decimal` scalar type represents a decimal floating-point number."
+scalar Decimal
+
+"The `Long` scalar type represents non-fractional signed whole 64-bit numeric values. Long can represent values between -(2^63) and 2^63 - 1."
+scalar Long
+
+"The `TimeSpan` scalar represents an ISO-8601 compliant duration type."
+scalar TimeSpan

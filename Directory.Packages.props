@@ -84,6 +84,7 @@
     <PackageVersion Include="Neo4j.Driver" Version="6.1.0" />
     <!-- v1.3.0 expansion: GraphQL (Hot Chocolate / Strawberry Shake) -->
     <PackageVersion Include="HotChocolate.AspNetCore" Version="15.1.16" />
+    <PackageVersion Include="HotChocolate.Authorization" Version="15.1.16" />
     <PackageVersion Include="HotChocolate.Execution" Version="15.1.16" />
     <PackageVersion Include="StrawberryShake.Server" Version="15.1.16" />
     <PackageVersion Include="StrawberryShake.Transport.Http" Version="15.1.16" />

@@ -1,5 +1,7 @@
 using HotChocolate.Execution.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using PolarSharp.MultiTenant.Identity.Authorization;
+using PolarSharp.Reporting.Drilldown;
 
 namespace PolarSharp.Reporting.GraphQL;
 
@@ -16,11 +18,16 @@ namespace PolarSharp.Reporting.GraphQL;
 /// typed clients OR Banana Cake Pop interactive UI in Development.
 /// </para>
 /// <para>
-/// <strong>Phase 18 ships the registration scaffold</strong>; the full Query / Mutation type
-/// definitions + DataLoaders for N+1 prevention + field-level <c>[RequirePolarPermission]</c>
-/// integration + schema-snapshot CI gate land in Phase 18.x. The scaffolded extension is
-/// shape-compatible with Hot Chocolate 15.x so subsequent phases just add resolvers without
-/// rewriting the registration.
+/// Every field is gated by a <c>PolarSharp.Permission.{PolarPermission}</c> ASP.NET Core
+/// authorization policy. <see cref="AddPolarReportingGraphQL"/> idempotently registers the
+/// per-permission policies via
+/// <see cref="PolarAuthorizationPolicies.RegisterAllBuiltIn"/> so the GraphQL schema compiles
+/// even when the host has not (yet) called <c>AddPolarIdentity</c>. The actual permission
+/// <em>handlers</em> (<c>PolarPermissionAuthorizationHandler</c>) ship internal to
+/// <c>PolarSharp.MultiTenant.Identity</c> and are wired by
+/// <c>services.AddPolarIdentity(...)</c>. Hosts that mount the GraphQL endpoint without
+/// calling <c>AddPolarIdentity</c> get fail-closed behaviour: the policy exists, no handler
+/// returns <c>Succeed</c>, all GraphQL fields deny.
 /// </para>
 /// </remarks>
 public static class ReportingGraphQLBuilderExtensions
@@ -35,22 +42,33 @@ public static class ReportingGraphQLBuilderExtensions
     /// builder.Services
     ///     .AddPolarReporting()
     ///     .UsePostgreSqlReporting(connStr);
+    /// builder.Services.AddPolarIdentity(builder.Configuration);   // wires the auth handlers
     /// builder.Services.AddPolarReportingGraphQL();
     /// // ...
     /// app.MapGraphQL("/graphql/reporting");
     /// </code>
     /// </example>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is <see langword="null"/>.</exception>
     public static IRequestExecutorBuilder AddPolarReportingGraphQL(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        // Policies — idempotent: AddPolicy replaces the existing policy of the same name. The
+        // ASP.NET Core registration (RegisterAllBuiltIn) installs one policy per PolarPermission
+        // under the "PolarSharp.Permission.{name}" convention that the [Authorize] attributes
+        // on PolarReportingQuery resolve.
+        services.AddAuthorization(PolarAuthorizationPolicies.RegisterAllBuiltIn);
+
         return services
             .AddGraphQLServer()
-            .AddQueryType(d => d.Name("PolarReportingQuery"))
-            // Resolvers + DataLoaders + field-level authz integration land in Phase 18.x.
-            // The Query type is registered with no fields for now so the schema compiles;
-            // subsequent phases add: transactions, subscriptions, orders, errorAudit, customers,
-            // customerEntitlements, customers(paged), customer(id) → orders → orderDetail drilldown.
+            .AddAuthorizationCore()
+            .AddAuthorizationHandler<AspNetCoreAuthorizationBridge>()
+            .AddQueryType<PolarReportingQuery>()
+            // PagedResult<T> closed generics need explicit registration — Hot Chocolate's
+            // discovery walks input/output types referenced from resolvers, but generic
+            // closures aren't always enumerable from the method signatures alone.
+            .AddType<PagedResult<CustomerListRow>>()
+            .AddType<PagedResult<OrderSummaryRow>>()
             .ModifyRequestOptions(opt => opt.IncludeExceptionDetails = false);
     }
 }

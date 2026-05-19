@@ -130,6 +130,7 @@
     <Project Path="tests/PolarSharp.EcommerceStoreManagement.Tests/PolarSharp.EcommerceStoreManagement.Tests.csproj" />
     <Project Path="tests/PolarSharp.EcommerceStoreManagement.Translation.Tests/PolarSharp.EcommerceStoreManagement.Translation.Tests.csproj" />
     <Project Path="tests/PolarSharp.Reporting.Tests/PolarSharp.Reporting.Tests.csproj" />
+    <Project Path="tests/PolarSharp.Reporting.GraphQL.Tests/PolarSharp.Reporting.GraphQL.Tests.csproj" />
     <Project Path="tests/PolarSharp.Reporting.Identity.Tests/PolarSharp.Reporting.Identity.Tests.csproj" />
     <Project Path="tests/PolarSharp.DataSeeding.Tests/PolarSharp.DataSeeding.Tests.csproj" />
   </Folder>

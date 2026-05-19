@@ -21,7 +21,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PolarSharp.Reporting\PolarSharp.Reporting.csproj" />
+    <ProjectReference Include="..\PolarSharp.MultiTenant.Identity\PolarSharp.MultiTenant.Identity.csproj" />
     <PackageReference Include="HotChocolate.AspNetCore" />
+    <PackageReference Include="HotChocolate.Authorization" />
   </ItemGroup>
 
 </Project>
