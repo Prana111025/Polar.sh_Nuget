@@ -23,15 +23,22 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-    <!-- v1.2.x Phase 2a/2b/2c: Testcontainers infrastructure for end-to-end provider integration
-         tests. The provider-specific packages (MsSql, PostgreSql, MariaDb) transitively pull the
-         Testcontainers.* base package, but we pin all of them so the central package-version
-         table stays explicit. Integration tests are tagged [Trait("Category", "Integration")]
-         and filtered out of fast unit-only runs. -->
+    <!-- v1.2.x Phase 2a/2b/2c/2d: Testcontainers infrastructure for end-to-end provider integration
+         tests. The provider-specific packages (MsSql, PostgreSql, MariaDb, CosmosDb) transitively
+         pull the Testcontainers.* base package, but we pin all of them so the central
+         package-version table stays explicit. Integration tests are tagged
+         [Trait("Category", "Integration")] and filtered out of fast unit-only runs. -->
     <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.CosmosDb" />
     <PackageReference Include="Testcontainers.MariaDb" />
     <PackageReference Include="Testcontainers.MsSql" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <!-- v1.2.x Phase 2d: SkippableFact for the Cosmos integration tests. The Cosmos Linux
+         emulator is the least bulletproof of the four Testcontainers — its ARM64 support is
+         multi-arch via vnext-preview but not bulletproof. SkippableFact lets the Cosmos tests
+         report Skipped (with a captured diagnostic message) instead of Failed when the
+         emulator can't boot on the host. -->
+    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>
@@ -44,6 +51,7 @@
     <ProjectReference Include="..\..\src\PolarSharp.MultiTenant.EntityFrameworkCore.Sqlite\PolarSharp.MultiTenant.EntityFrameworkCore.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\PolarSharp.MultiTenant.EntityFrameworkCore.PostgreSQL\PolarSharp.MultiTenant.EntityFrameworkCore.PostgreSQL.csproj" />
     <ProjectReference Include="..\..\src\PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb\PolarSharp.MultiTenant.EntityFrameworkCore.MariaDb.csproj" />
+    <ProjectReference Include="..\..\src\PolarSharp.MultiTenant.EntityFrameworkCore.CosmosDb\PolarSharp.MultiTenant.EntityFrameworkCore.CosmosDb.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
 

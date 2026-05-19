@@ -60,9 +60,14 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.7" />
     <!-- v1.2.x Phase 2: Testcontainers infrastructure for end-to-end provider integration tests -->
     <PackageVersion Include="Testcontainers" Version="4.11.0" />
+    <PackageVersion Include="Testcontainers.CosmosDb" Version="4.11.0" />
     <PackageVersion Include="Testcontainers.MariaDb" Version="4.11.0" />
     <PackageVersion Include="Testcontainers.MsSql" Version="4.11.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.11.0" />
+    <!-- v1.2.x Phase 2d: SkippableFact lets the Cosmos integration tests report Skipped (not
+         Failed) on hosts where the Cosmos Linux emulator can't boot — e.g. some Apple Silicon
+         configurations where the multi-arch vnext-preview image still hits edge cases. -->
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.23" />
     <!-- Benchmarks -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <!-- v1.3.0 expansion: MariaDB / MySQL provider (Oracle's official EF Core 10 build; Pomelo has not yet shipped

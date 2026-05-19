@@ -49,12 +49,26 @@ public class PolarTenantDbContext : DbContext
         ArgumentNullException.ThrowIfNull(modelBuilder);
         base.OnModelCreating(modelBuilder);
 
+        // The EF Core Cosmos provider rejects HasIndex(...) calls outright — Cosmos
+        // containers index every property by default, so explicit secondary indexes are
+        // neither necessary nor supported. Detect non-relational providers (Cosmos is
+        // the only non-relational provider PolarSharp ships) and skip the index
+        // declarations so the same DbContext class can be reused across SqlServer,
+        // PostgreSQL, MariaDB, SQLite (which all need the indexes) and Cosmos (which
+        // rejects them). Using IsRelational() instead of IsCosmos() keeps this base
+        // package free of the Microsoft.EntityFrameworkCore.Cosmos transitive dep —
+        // SQL hosts shouldn't pull in the Cosmos SDK just to know they aren't Cosmos.
+        var isRelational = Database.IsRelational();
+
         modelBuilder.Entity<PolarTenantInfoEntity>(e =>
         {
             e.ToTable("polar_tenants");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasMaxLength(64).IsRequired();
-            e.HasIndex(x => x.Identifier).IsUnique();
+            if (isRelational)
+            {
+                e.HasIndex(x => x.Identifier).IsUnique();
+            }
             e.Property(x => x.Identifier).HasMaxLength(128).IsRequired();
             // Inherited from PolarTenantBase:
             e.Property(x => x.Name).HasMaxLength(256).IsRequired();
@@ -89,7 +103,10 @@ public class PolarTenantDbContext : DbContext
             e.Property(x => x.ActorUserId).HasMaxLength(64);
             e.Property(x => x.Message);
             e.Property(x => x.ResultSummaryJson);
-            e.HasIndex(x => x.UpgradeKind);
+            if (isRelational)
+            {
+                e.HasIndex(x => x.UpgradeKind);
+            }
         });
     }
 }
