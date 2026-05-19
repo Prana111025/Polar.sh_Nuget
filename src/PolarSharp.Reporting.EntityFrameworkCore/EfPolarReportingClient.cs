@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using PolarSharp;
 using PolarSharp.Reporting.Drilldown;
 using PolarSharp.Reporting.Reports;
@@ -27,12 +29,20 @@ public sealed class EfPolarReportingClient : IPolarReportingClient
     private const int MaxPageSize = 500;
 
     private readonly PolarReportingDbContext _db;
+    private readonly ILogger<EfPolarReportingClient> _logger;
 
     /// <summary>Initializes the client.</summary>
-    public EfPolarReportingClient(PolarReportingDbContext db)
+    /// <param name="db">The reporting snapshot DbContext.</param>
+    /// <param name="logger">
+    /// Optional logger. When omitted (e.g. in tests that construct manually), falls back to
+    /// <see cref="NullLogger{T}.Instance"/>. The DI container injects the registered logger
+    /// automatically.
+    /// </param>
+    public EfPolarReportingClient(PolarReportingDbContext db, ILogger<EfPolarReportingClient>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(db);
         _db = db;
+        _logger = logger ?? NullLogger<EfPolarReportingClient>.Instance;
     }
 
     // ── Aggregate / KPI ────────────────────────────────────────────────
@@ -68,15 +78,79 @@ public sealed class EfPolarReportingClient : IPolarReportingClient
     }
 
     /// <inheritdoc/>
-    public Task<Result<SubscriptionReport, PolarError>> GetSubscriptionsAsync(SubscriptionReportRequest request, CancellationToken ct = default)
+    /// <remarks>
+    /// <para>
+    /// <strong>Partial implementation.</strong> Counts that are directly derivable from the
+    /// snapshot table (<see cref="PolarReportingDbContext.Subscriptions"/>) are computed
+    /// honestly: <see cref="SubscriptionReport.ActiveSubscriptions"/>,
+    /// <see cref="SubscriptionReport.NewSubscriptions"/>,
+    /// <see cref="SubscriptionReport.CanceledSubscriptions"/>, and
+    /// <see cref="SubscriptionReport.ChurnRate"/>.
+    /// </para>
+    /// <para>
+    /// <strong>Returned as zero (and logged as a warning at runtime):</strong>
+    /// <see cref="SubscriptionReport.Mrr"/>, <see cref="SubscriptionReport.Arr"/>, and
+    /// <see cref="SubscriptionReport.ExpansionRevenue"/> require data the current snapshot
+    /// schema does not carry (per-subscription monthly amount and change history). Extending
+    /// <c>ReportSubscriptionEntity</c> with a <c>MonthlyAmount</c> column + recording it on
+    /// every snapshot tick is the tracked-but-not-yet-scheduled path. The warning ensures
+    /// callers know the fields are placeholders rather than legitimate zeros.
+    /// </para>
+    /// <para>
+    /// <see cref="SubscriptionReport.Cohorts"/> is returned empty for the same "computable
+    /// but non-trivial; defer until needed" reason — opt-in via a future patch when a host
+    /// surfaces a concrete cohort dashboard requirement.
+    /// </para>
+    /// </remarks>
+    public async Task<Result<SubscriptionReport, PolarError>> GetSubscriptionsAsync(SubscriptionReportRequest request, CancellationToken ct = default)
     {
-        // Stubbed roll-up — Polar HTTP polling required for full impl; see Phase 11 integration tests.
         ArgumentNullException.ThrowIfNull(request);
-        return Task.FromResult(Result<SubscriptionReport, PolarError>.Success(new SubscriptionReport
+
+        var subs = _db.Subscriptions.AsQueryable();
+
+        var activeAtEnd = await subs.CountAsync(
+            s => s.StartedAt < request.PeriodEnd
+              && (s.CanceledAt == null || s.CanceledAt >= request.PeriodEnd)
+              && (s.Status == "active" || s.Status == "trialing"),
+            ct).ConfigureAwait(false);
+
+        var newCount = await subs.CountAsync(
+            s => s.StartedAt >= request.PeriodStart && s.StartedAt < request.PeriodEnd,
+            ct).ConfigureAwait(false);
+
+        var canceledCount = await subs.CountAsync(
+            s => s.CanceledAt != null
+              && s.CanceledAt >= request.PeriodStart
+              && s.CanceledAt < request.PeriodEnd,
+            ct).ConfigureAwait(false);
+
+        var activeAtStart = await subs.CountAsync(
+            s => s.StartedAt < request.PeriodStart
+              && (s.CanceledAt == null || s.CanceledAt >= request.PeriodStart)
+              && (s.Status == "active" || s.Status == "trialing"),
+            ct).ConfigureAwait(false);
+
+        var churnRate = activeAtStart == 0 ? 0m : Math.Round((decimal)canceledCount / activeAtStart, 4);
+
+        _logger.LogWarning(
+            "EfPolarReportingClient.GetSubscriptionsAsync returned zero for Mrr/Arr/ExpansionRevenue: " +
+            "the snapshot schema (ReportSubscriptionEntity) does not currently carry per-subscription " +
+            "monthly amount or change history. Active/new/canceled counts and churn rate ARE computed. " +
+            "To populate the missing fields, extend ReportSubscriptionEntity with MonthlyAmount + record " +
+            "it on every snapshot tick. Period: {PeriodStart:o} -> {PeriodEnd:o}, Currency: {Currency}.",
+            request.PeriodStart, request.PeriodEnd, request.Currency);
+
+        return Result<SubscriptionReport, PolarError>.Success(new SubscriptionReport
         {
-            Mrr = 0, Arr = 0, ActiveSubscriptions = 0, NewSubscriptions = 0, CanceledSubscriptions = 0,
-            ChurnRate = 0m, ExpansionRevenue = 0,
-        }));
+            Mrr = 0,
+            Arr = 0,
+            ActiveSubscriptions = activeAtEnd,
+            NewSubscriptions = newCount,
+            CanceledSubscriptions = canceledCount,
+            ChurnRate = churnRate,
+            ExpansionRevenue = 0,
+            Cohorts = [],
+        });
     }
 
     /// <inheritdoc/>
@@ -99,17 +173,55 @@ public sealed class EfPolarReportingClient : IPolarReportingClient
     }
 
     /// <inheritdoc/>
-    public Task<Result<ErrorAuditReport, PolarError>> GetErrorAuditAsync(ErrorAuditRequest request, CancellationToken ct = default)
+    /// <remarks>
+    /// <para>
+    /// <strong>Partial implementation.</strong>
+    /// <see cref="ErrorAuditReport.RecentPolarEvents"/> is populated from the snapshot
+    /// <see cref="PolarReportingDbContext.Events"/> table, ordered by
+    /// <c>OccurredAt</c> descending, capped at <see cref="ErrorAuditRequest.RecentEventCount"/>.
+    /// </para>
+    /// <para>
+    /// <strong>Returned as zero (and logged as a warning at runtime):</strong> the five
+    /// counter fields (<see cref="ErrorAuditReport.WebhookDeliveryFailures"/>,
+    /// <see cref="ErrorAuditReport.SignatureVerificationFailures"/>,
+    /// <see cref="ErrorAuditReport.CircuitBreakerOpenEvents"/>,
+    /// <see cref="ErrorAuditReport.RateLimitHits"/>,
+    /// <see cref="ErrorAuditReport.ApiErrorsByStatus"/>) require a
+    /// <c>System.Diagnostics.Metrics</c> listener that observes PolarSharp's runtime
+    /// counters and aggregates them over the request period. The reporting client does not
+    /// wire that listener today; the warning ensures callers know the counter fields are
+    /// placeholders rather than legitimate zeros.
+    /// </para>
+    /// </remarks>
+    public async Task<Result<ErrorAuditReport, PolarError>> GetErrorAuditAsync(ErrorAuditRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Task.FromResult(Result<ErrorAuditReport, PolarError>.Success(new ErrorAuditReport
+
+        var recentEvents = await _db.Events
+            .Where(e => e.OccurredAt >= request.PeriodStart && e.OccurredAt < request.PeriodEnd)
+            .OrderByDescending(e => e.OccurredAt)
+            .Take(Math.Max(request.RecentEventCount, 0))
+            .Select(e => new PolarEventLogEntry(e.PolarEventId, e.Type, e.OccurredAt, ""))
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        _logger.LogWarning(
+            "EfPolarReportingClient.GetErrorAuditAsync returned zero for counter fields " +
+            "(WebhookDeliveryFailures, SignatureVerificationFailures, CircuitBreakerOpenEvents, " +
+            "RateLimitHits, ApiErrorsByStatus): these require a System.Diagnostics.Metrics listener " +
+            "that aggregates PolarSharp's runtime counters over the request period — the reporting " +
+            "client does not wire that listener today. RecentPolarEvents IS populated from the " +
+            "snapshot Events table. Period: {PeriodStart:o} -> {PeriodEnd:o}, RecentEventCount: {Count}.",
+            request.PeriodStart, request.PeriodEnd, request.RecentEventCount);
+
+        return Result<ErrorAuditReport, PolarError>.Success(new ErrorAuditReport
         {
             WebhookDeliveryFailures = 0,
             SignatureVerificationFailures = 0,
             CircuitBreakerOpenEvents = 0,
             RateLimitHits = 0,
             ApiErrorsByStatus = 0,
-        }));
+            RecentPolarEvents = recentEvents,
+        });
     }
 
     /// <inheritdoc/>
