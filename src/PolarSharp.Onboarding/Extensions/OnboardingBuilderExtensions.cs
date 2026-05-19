@@ -29,6 +29,15 @@ public static class OnboardingBuilderExtensions
 
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.TryAddSingleton<IOnboardedTenantSink, NoOpOnboardedTenantSink>();
+
+        // Fail-loud default for IPolarOnboardingApi so DI resolution of
+        // IPolarOnboardingClient succeeds without the host having to wire anything for the
+        // common case. The stub throws NotSupportedException on first call with a clear
+        // pointer at TASK-V20-006. TryAdd lets a host that already registered their own
+        // IPolarOnboardingApi (e.g. a custom Kiota wrapper) win. See
+        // StubKiotaPolarOnboardingApi for the rationale.
+        services.TryAddScoped<IPolarOnboardingApi, StubKiotaPolarOnboardingApi>();
+
         services.TryAddScoped<IPolarOnboardingClient, PolarOnboardingClient>();
 
         return new PolarOnboardingBuilder(services, configuration);

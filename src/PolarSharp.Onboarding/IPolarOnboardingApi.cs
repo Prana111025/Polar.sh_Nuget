@@ -7,10 +7,26 @@ namespace PolarSharp.Onboarding;
 /// real HTTP traffic to Polar.
 /// </summary>
 /// <remarks>
-/// Default implementation in <c>KiotaPolarOnboardingApi</c> delegates to
+/// <para>
+/// <strong>Default registration is a fail-loud stub</strong>
+/// (<c>StubKiotaPolarOnboardingApi</c>) that throws <see cref="NotSupportedException"/>
+/// on every call with a message pointing at TASK-V20-006. This lets DI resolution of
+/// <see cref="IPolarOnboardingClient"/> succeed without the host wiring anything up, but
+/// the first onboarding call will throw with a clear, actionable message. Until the
+/// Kiota-backed implementation lands under TASK-V20-006, hosts that need real onboarding
+/// must supply their own implementation:
+/// <code>
+/// services.AddScoped&lt;IPolarOnboardingApi, MyKiotaPolarOnboardingApi&gt;();
+/// services.AddPolarOnboarding(configuration);
+/// </code>
+/// </para>
+/// <para>
+/// The real implementation, when it lands, will delegate to
 /// <see cref="PolarClient"/>'s typed resource clients (Organizations,
-/// OrganizationAccessTokens, Webhooks). Hosts can substitute their own implementation when
-/// they need custom HTTP routing, request signing, or instrumentation.
+/// OrganizationAccessTokens, Webhooks). Hosts can still substitute their own
+/// implementation post-V20-006 when they need custom HTTP routing, request signing, or
+/// instrumentation.
+/// </para>
 /// </remarks>
 public interface IPolarOnboardingApi
 {
