@@ -389,9 +389,7 @@ internal sealed class PolarClientReportingApi(PolarClient polar, ILogger<PolarCl
         }
     }
 
-    // ── V20-005 Phase 1: 7 new resource impls ────────────────────────────────
-    // Filled in resource-by-resource below. Each starts as a stub returning empty
-    // so the file compiles cleanly during incremental wiring; replaced one-at-a-time.
+    // ── V20-005 Phase 1: 7 additional resource impls (live-wired) ──────────────
 
     /// <inheritdoc/>
     /// <remarks>

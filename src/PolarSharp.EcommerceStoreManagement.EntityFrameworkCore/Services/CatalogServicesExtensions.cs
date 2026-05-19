@@ -51,9 +51,9 @@ public static class CatalogServicesExtensions
         services.TryAddSingleton<TimeProvider>(_ => TimeProvider.System);
         services.TryAddScoped<IAuditLogActorProvider, SystemAuditLogActorProvider>();
 
-        // TASK-V20-013: registered Scoped because it depends on the Scoped IAuditLogActorProvider.
-        // Each provider's UseXxxCatalog extension wires this into the DbContext via
-        // .AddInterceptors(sp.GetRequiredService<AuditLogSaveChangesInterceptor>()).
+        // Registered Scoped (depends on the Scoped IAuditLogActorProvider). The DbContext
+        // attachment happens inside each provider's UseXxxCatalog extension, which calls
+        // AddInterceptors with the scoped instance — see SqliteCatalogBuilderExtensions et al.
         services.TryAddScoped<AuditLogSaveChangesInterceptor>();
 
         // Polar HTTP wrappers — TryAdd so hosts can register their own first.
