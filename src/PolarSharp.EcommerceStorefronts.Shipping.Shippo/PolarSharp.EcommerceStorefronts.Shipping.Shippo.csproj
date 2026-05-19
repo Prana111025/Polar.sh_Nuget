@@ -4,6 +4,8 @@
     <IsLibrary>true</IsLibrary>
     <PackageId>PolarSharp.EcommerceStorefronts.Shipping.Shippo</PackageId>
     <Version>1.0.0</Version>
+    <!-- Marked IsPackable=false 2026-05-19: package has zero hand-written source files. Flip back to true once the v1.4.0 implementation lands so the empty assembly never reaches a NuGet feed. -->
+    <IsPackable>false</IsPackable>
     <Authors>Molls and Hersh, LLC</Authors>
     <Description>Shippo provider for IStorefrontShippingProvider.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

@@ -4,6 +4,8 @@
     <IsLibrary>true</IsLibrary>
     <PackageId>PolarSharp.EcommerceStorefronts.SEO</PackageId>
     <Version>1.0.0</Version>
+    <!-- Marked IsPackable=false 2026-05-19: package has zero hand-written source files. Flip back to true once the v1.4.0 implementation lands so the empty assembly never reaches a NuGet feed. -->
+    <IsPackable>false</IsPackable>
     <Authors>Molls and Hersh, LLC</Authors>
     <Description>Server-side-rendered product pages + sitemap.xml + robots.txt + OpenGraph + JSON-LD + canonical URLs + hreflang.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
