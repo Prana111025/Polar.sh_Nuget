@@ -207,6 +207,63 @@ Cart / Checkout / Customer services + GuestSessions package + idempotency cache 
   - Refund-to-wallet: Polar refund credited back as `RefundAsCredit` wallet event.
 - **Acceptance:** Each bridge ships real implementation + paired tests; scaffold integrity test no longer counts these as scaffolds; CHANGELOG corrected.
 
+### TASK-V14-010 — Wallet read-model projections (Marten projection daemon)
+
+- **Status:** Not started — HIGH priority; blocks Phase 22.5 WTR framework's `SaaSTaxOwedReport` and `TenantTaxOwedReport`
+- **Project:** New `PolarSharp.PrepaidWallets.Projections` package (lift-safe core) + `PolarSharp.PrepaidWallets.Polar.Projections` (Polar-specific projections)
+- **Problem:** The wallet has aggregate-internal projections (`WalletAggregate.Apply` rebuilds state on load) + snapshots (every N events to avoid replaying the full stream), but ZERO read-model projections — denormalized views that queries / UIs / reports consume directly. Today any query like "show me this customer's wallet transaction history" or "give me the tenant's wallet revenue this quarter" requires `LoadAsync(walletId, fromSeq=1)` + in-memory materialization. Won't scale; doesn't support cross-wallet aggregation. Phase 22.5 WTR's `saas_revenue_ledger` (per PLAN.md D-002 design) is exactly this kind of projection but it's not built.
+- **What to build:**
+  - **`WalletBalanceSummary` projection** — one row per (tenantId, walletId, currency) with current balance, status, last-activity timestamp. Reads `WalletOpened` / `WalletFunded` / `WalletDebited` / `WalletCredited` / `WalletRefunded` / `WalletClosed` events. Used by tenant-admin dashboards.
+  - **`WalletTransactionHistory` projection** — one row per (walletId, sequenceNo) with denormalized event payload + funding-source allocation. Used by customer-facing wallet history pages.
+  - **`TenantWalletRevenueLedger` projection** — Phase 22.5's `saas_revenue_ledger` table; one row per recognized-revenue event with tenant_id, jurisdiction, revenue_type, amount_cents, recognized_at_utc. The source-of-truth for the WTR tax reports.
+  - **`CustomerLifetimeWalletValue` projection** — cross-wallet aggregation per customer (a customer may have multiple wallets across tenants if the SaaS supports it). Powers the customer-360 view.
+  - **Marten implementation** uses the Marten-native primitives per DECISIONS.md D-008 "Marten implementations MUST leverage Marten-native event-sourcing features": projection daemon for async projections, `MultiStreamProjection<T>` for cross-stream views like `TenantWalletRevenueLedger`, `InlineProjection` only where transactional consistency with the event append is REQUIRED, event-metadata indexing on `tenant_id` instead of denormalised columns, tenancy-aware document stores. Refactor the current `MartenWalletEventStore` (which today treats Marten as Postgres-with-streams) to use `AggregateStreamAsync<WalletAggregate>` + native `ExpectedVersion` concurrency instead of the manual stream-read + version-check it does today.
+  - **EF Core implementation** uses a polling-based replay runner (less feature-rich than Marten's daemon but works on every provider). Per-provider variants live in `PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore.*` (currently scaffolds; need to land alongside TASK-V14-008).
+  - Per-provider Testcontainer integration tests covering: projection catches up from event #0 on fresh start, projection updates on new events, projection is idempotent on replay.
+- **Acceptance:** All four projections ship; replay-from-zero works against real Postgres (Marten) + EF Core providers; sub-millisecond reads from denormalized tables verified; Marten implementation uses native primitives per D-008 (audit-checked by a code-review pass before merge).
+- **References:** DECISIONS.md D-008 (event-sourced aggregates + projections + Marten-native usage); PLAN.md "Wallet Tax Responsibility (WTR) framework" Component 5.
+
+### TASK-V14-011 — Gift cards as their own event-sourced aggregate
+
+- **Status:** Not started — HIGH priority; current treatment is incomplete
+- **Project:** New packages `PolarSharp.GiftCards.Abstractions` (lift-safe core) + `PolarSharp.GiftCards` (aggregate + behaviors) + `PolarSharp.GiftCards.Polar.Checkout` (bridge for redemption at Polar checkout)
+- **Problem:** Today gift cards are treated as a *wallet funding source* — when a card is redeemed, a `WalletFunded(Source: GiftCardActivation)` event lands on the recipient's wallet stream and that's the entire record. This works for "redeemed-on-arrival" cards but loses crucial gift-card lifecycle history:
+  - Activation date + amount + purchaser + intended recipient
+  - Partial redemptions across multiple wallets / sessions
+  - Card transfers (gifter → recipient → secondary recipient)
+  - Card expiry + escheatment (unclaimed-property laws by jurisdiction)
+  - Card replacement (lost / stolen / damaged)
+  - Gift-card-specific tax treatment (most US states: redemption is the taxable event; activation is NOT)
+- **What to build:**
+  - `GiftCardAggregate` with event stream: `GiftCardActivated`, `GiftCardRedeemed` (partial or full), `GiftCardTransferred`, `GiftCardExpired`, `GiftCardReplaced`, `GiftCardEscheated`
+  - Wallet events reference the gift card by id (`Option<Guid> SourceGiftCardId` on `WalletFunded`); the gift card's own event stream tracks the card's lifecycle independently
+  - Aggregate-internal projections: current remaining balance, redemption history
+  - Read-model projections: `GiftCardSummaryPerTenant` (active cards + total outstanding liability — important for tenant accounting), `ExpiringGiftCardsAlerts` (cards within N days of expiry; tenant lifecycle notification trigger)
+  - Polar-bridge: `PolarSharp.GiftCards.Polar.Checkout` registers a checkout interceptor that recognises gift-card redemption codes at the Polar checkout step + emits `GiftCardRedeemed` + `WalletFunded` events transactionally
+  - Two end-to-end test scenarios: (1) "issue card → recipient redeems part for purchase A → recipient gifts the remainder to a different person who redeems for purchase B"; (2) "issue card → card expires unclaimed → escheatment to the appropriate jurisdiction's unclaimed-property fund"
+- **Acceptance:** Gift card lifecycle queryable independently of wallet events; tenant accounting can report outstanding-gift-card-liability accurately; Polar checkout redemption flows end-to-end against the sandbox.
+
+### TASK-V14-012 — Loyalty + referrals as event-sourced aggregates
+
+- **Status:** Not started — MEDIUM priority; design unblocks WC catalog tasks in PLAN.md Phase 3
+- **Project:** New packages `PolarSharp.LoyaltyAccounts.Abstractions` + `PolarSharp.LoyaltyAccounts` + `PolarSharp.LoyaltyAccounts.Polar.*` and parallel `PolarSharp.Referrals.*` family
+- **Problem:** Same problem as gift cards — these are long-lived, immutable-history-preferred, balance-tracking things treated today as wallet funding-source stamps (`TenantPromotionalGrant` on a wallet event). Loyalty programs need:
+  - Point accrual events per qualifying purchase
+  - Tier progression (Bronze → Silver → Gold based on cumulative-points-this-year)
+  - Point expiry rules (typically rolling 12-24 months)
+  - Tier downgrade rules (when annual qualifying-points falls below threshold)
+  - Reward redemption events (`LoyaltyPointsRedeemed`) feed wallets via `WalletFunded(Source: TenantPromotionalGrant)`
+- **Referrals need:**
+  - Attribution events (referee signs up via referrer's link)
+  - Attribution-window rules (referrer earns X% of referee's purchases for first N days)
+  - Multi-step chains (referrer → referee → referee-of-referee, with N-deep payout schedules per program design)
+  - Reward issuance events feeding wallets
+- **What to build:**
+  - `LoyaltyAccountAggregate` + `ReferralAggregate` each with their own event streams + aggregate-internal projections + read-model projections + per-provider Testcontainer tests
+  - Polar bridges for the redemption / payout paths
+  - WCs that consume the projections: `polar-loyalty-tier-badge`, `polar-referral-link-share`, `polar-referee-earnings-summary` (per PLAN.md Phase 3 WC catalog — these were placeholder entries; this task gives them real backing)
+- **Acceptance:** Loyalty + referral lifecycles queryable independently of wallet event streams; WCs render against real projection data.
+
 ### TASK-V14-005 — Wallet event-store Implementation Narrative
 
 - **Status:** Not started
