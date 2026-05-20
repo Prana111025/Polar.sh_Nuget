@@ -18,6 +18,7 @@ Before doing any work, read these files in order:
 3. `PROGRESS.md` — completed work log
 4. `DECISIONS.md` — locked architecture decisions
 5. The 5 Architectural Case Studies in `Case Studies/` (see list below)
+5b. **`AGENT-COORDINATION.md`** — **MANDATORY** if you are a sub-agent working on a parallel branch while other agents are also active; defines branch-naming, file-ownership matrix, shared-file lockout rules, memory-write rule, and the pre-merge gate. Solo sessions can skim it for the branch-naming convention and otherwise skip.
 
 **Home-rooted (in `/Users/mollsandhersh/`; universal across all Claude projects):**
 

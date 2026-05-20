@@ -1,4 +1,18 @@
 <Project>
+  <!--
+    ╔══ AGENT-COORDINATION NOTICE ══════════════════════════════════════════════════════╗
+    ║ This file is a LOCKED shared file per AGENT-COORDINATION.md §3. Sub-agents do NOT  ║
+    ║ edit it directly; they note required package additions in their merge-request body ║
+    ║ and the main session lands the entries before the agent's branch merges.           ║
+    ║                                                                                    ║
+    ║ Light-touch ownership zones (informational; not enforced beyond convention):       ║
+    ║   • Kiota / Resilience / Connection / Core platform deps     → coordination only   ║
+    ║   • Testcontainers + provider packages                       → coordination only   ║
+    ║   • PolarSharp.PrepaidWallets dependencies                   → wallet agent area   ║
+    ║   • PolarSharp.EcommerceStorefronts dependencies             → storefronts area    ║
+    ║   • Documentation / DocFX tooling                            → docs agent area     ║
+    ╚════════════════════════════════════════════════════════════════════════════════════╝
+  -->
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
