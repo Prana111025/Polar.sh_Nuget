@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Options;
 using PolarSharp.EcommerceStorefronts.Abstractions;
 using PolarSharp.EcommerceStorefronts.Abstractions.Cart;
 using PolarSharp.EcommerceStorefronts.Abstractions.Checkout;
@@ -32,6 +33,8 @@ public sealed class DefaultStorefrontCheckoutService : IStorefrontCheckoutServic
     private readonly IStorefrontCheckoutSessionStore _sessionStore;
     private readonly IStorefrontIdentityProvider _identity;
     private readonly IGuestSessionAccessor _guestSessions;
+    private readonly IStorefrontIdempotencyCache _idempotency;
+    private readonly StorefrontOptions _options;
     private readonly OrderProcessingPipeline? _pipeline;
     private readonly TimeProvider _clock;
 
@@ -40,6 +43,8 @@ public sealed class DefaultStorefrontCheckoutService : IStorefrontCheckoutServic
     /// <param name="sessionStore">Session persistence.</param>
     /// <param name="identity">Resolves the current customer + tenant.</param>
     /// <param name="guestSessions">Resolves the current guest session.</param>
+    /// <param name="idempotency">Idempotency cache used to short-circuit retried checkout initiations.</param>
+    /// <param name="options">Storefront tunables (idempotency TTL).</param>
     /// <param name="pipeline">
     /// The order-processing pipeline, or <see langword="null"/> when
     /// <c>AddPolarOrderProcessingPipeline()</c> was not called.
@@ -53,6 +58,8 @@ public sealed class DefaultStorefrontCheckoutService : IStorefrontCheckoutServic
         IStorefrontCheckoutSessionStore sessionStore,
         IStorefrontIdentityProvider identity,
         IGuestSessionAccessor guestSessions,
+        IStorefrontIdempotencyCache idempotency,
+        IOptions<StorefrontOptions> options,
         OrderProcessingPipeline? pipeline = null,
         TimeProvider? clock = null)
     {
@@ -60,11 +67,15 @@ public sealed class DefaultStorefrontCheckoutService : IStorefrontCheckoutServic
         ArgumentNullException.ThrowIfNull(sessionStore);
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(guestSessions);
+        ArgumentNullException.ThrowIfNull(idempotency);
+        ArgumentNullException.ThrowIfNull(options);
 
         _cartStore = cartStore;
         _sessionStore = sessionStore;
         _identity = identity;
         _guestSessions = guestSessions;
+        _idempotency = idempotency;
+        _options = options.Value;
         _pipeline = pipeline;
         _clock = clock ?? TimeProvider.System;
     }
@@ -82,7 +93,19 @@ public sealed class DefaultStorefrontCheckoutService : IStorefrontCheckoutServic
             return StorefrontResult<CheckoutSession>.Failure(error);
         }
 
-        var cartOpt = await _cartStore.FindByOwnerAsync(owner!.Value, tenantId, ct).ConfigureAwait(false);
+        var idemKey = BuildIdempotencyKey(owner!.Value, cmd.IdempotencyToken);
+        if (idemKey is not null)
+        {
+            var cached = await _idempotency
+                .TryGetAsync<StorefrontResult<CheckoutSession>>(idemKey, ct)
+                .ConfigureAwait(false);
+            if (cached.HasValue)
+            {
+                return cached.GetValueOrDefault(default);
+            }
+        }
+
+        var cartOpt = await _cartStore.FindByOwnerAsync(owner.Value, tenantId, ct).ConfigureAwait(false);
         if (!cartOpt.HasValue)
         {
             return StorefrontResult<CheckoutSession>.Failure(new StorefrontNotFoundError(
@@ -117,7 +140,14 @@ public sealed class DefaultStorefrontCheckoutService : IStorefrontCheckoutServic
             CreatedAt = _clock.GetUtcNow(),
         };
         await _sessionStore.SaveAsync(session, ct).ConfigureAwait(false);
-        return StorefrontResult<CheckoutSession>.Success(session);
+        var result = StorefrontResult<CheckoutSession>.Success(session);
+        if (idemKey is not null)
+        {
+            await _idempotency
+                .SetAsync(idemKey, result, _options.IdempotencyCacheTtl, ct)
+                .ConfigureAwait(false);
+        }
+        return result;
     }
 
     /// <inheritdoc/>
@@ -292,4 +322,9 @@ public sealed class DefaultStorefrontCheckoutService : IStorefrontCheckoutServic
             Message: "No customer or guest session resolved for the current request.",
             CorrelationId: Guid.NewGuid().ToString("N")));
     }
+
+    private static string? BuildIdempotencyKey(CartOwner owner, string? token) =>
+        string.IsNullOrWhiteSpace(token)
+            ? null
+            : $"InitiateCheckout|{(int)owner.Kind}|{owner.Id:N}|{token}";
 }

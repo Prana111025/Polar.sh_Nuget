@@ -30,6 +30,18 @@ namespace PolarSharp.EcommerceStorefronts.Cart;
 /// tenant scope is read from <see cref="IStorefrontIdentityProvider.CurrentTenantId"/>
 /// and is <see cref="StorefrontOption{T}.None"/> in single-tenant mode.
 /// </para>
+/// <para>
+/// Idempotency: mutating commands (<see cref="AddToCartCommand"/>,
+/// <see cref="UpdateQuantityCommand"/>) honour their <c>IdempotencyToken</c> via
+/// <see cref="IStorefrontIdempotencyCache"/> — a retry with a previously-seen token
+/// short-circuits to the original response without re-executing the mutation. TTL is
+/// <see cref="StorefrontOptions.IdempotencyCacheTtl"/>.
+/// </para>
+/// <para>
+/// Expiry: every save stamps <see cref="Abstractions.Cart.Cart.ExpiresAt"/> with
+/// <c>now + StorefrontOptions.CartLifetime</c>. The store treats expired entries as
+/// absent on subsequent lookups so abandoned carts auto-prune.
+/// </para>
 /// </remarks>
 public sealed class DefaultStorefrontCartService : IStorefrontCartService
 {
@@ -37,6 +49,7 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
     private readonly IGuestSessionAccessor _guestSessions;
     private readonly IStorefrontCartStore _store;
     private readonly IStorefrontCatalogProvider _catalog;
+    private readonly IStorefrontIdempotencyCache _idempotency;
     private readonly StorefrontOptions _options;
     private readonly TimeProvider _clock;
 
@@ -45,16 +58,18 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
     /// <param name="guestSessions">Resolves the current guest session.</param>
     /// <param name="store">Cart persistence.</param>
     /// <param name="catalog">Catalog provider used to revalidate prices + availability.</param>
+    /// <param name="idempotency">Idempotency-cache used to short-circuit retried mutations.</param>
     /// <param name="options">Storefront tunables (cart limits, idempotency).</param>
     /// <param name="clock">Clock used for timestamps; defaults to <see cref="TimeProvider.System"/>.</param>
     /// <exception cref="ArgumentNullException">
-    /// Thrown when any argument is <see langword="null"/>.
+    /// Thrown when any required argument is <see langword="null"/>.
     /// </exception>
     public DefaultStorefrontCartService(
         IStorefrontIdentityProvider identity,
         IGuestSessionAccessor guestSessions,
         IStorefrontCartStore store,
         IStorefrontCatalogProvider catalog,
+        IStorefrontIdempotencyCache idempotency,
         IOptions<StorefrontOptions> options,
         TimeProvider? clock = null)
     {
@@ -62,12 +77,14 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
         ArgumentNullException.ThrowIfNull(guestSessions);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(idempotency);
         ArgumentNullException.ThrowIfNull(options);
 
         _identity = identity;
         _guestSessions = guestSessions;
         _store = store;
         _catalog = catalog;
+        _idempotency = idempotency;
         _options = options.Value;
         _clock = clock ?? TimeProvider.System;
     }
@@ -102,6 +119,23 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
         if (cmd.Quantity <= 0)
         {
             return Invalid("Quantity must be positive.", nameof(cmd.Quantity), "Cart.QuantityMustBePositive");
+        }
+
+        var (owner, _, ownerError) = ResolveOwner();
+        if (ownerError is not null)
+        {
+            return StorefrontResult<Abstractions.Cart.Cart>.Failure(ownerError);
+        }
+        var idemKey = BuildIdempotencyKey("AddToCart", owner!.Value, cmd.IdempotencyToken);
+        if (idemKey is not null)
+        {
+            var cached = await _idempotency
+                .TryGetAsync<StorefrontResult<Abstractions.Cart.Cart>>(idemKey, ct)
+                .ConfigureAwait(false);
+            if (cached.HasValue)
+            {
+                return cached.GetValueOrDefault(default);
+            }
         }
 
         var loadResult = await GetCurrentCartAsync(ct).ConfigureAwait(false);
@@ -178,7 +212,9 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
         }
 
         await _store.SaveAsync(updated, ct).ConfigureAwait(false);
-        return StorefrontResult<Abstractions.Cart.Cart>.Success(updated);
+        var result = StorefrontResult<Abstractions.Cart.Cart>.Success(updated);
+        await RememberAsync(idemKey, result, ct).ConfigureAwait(false);
+        return result;
     }
 
     /// <inheritdoc/>
@@ -190,6 +226,23 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
         if (cmd.Quantity < 0)
         {
             return Invalid("Quantity must be zero or positive.", nameof(cmd.Quantity), "Cart.QuantityMustBeNonNegative");
+        }
+
+        var (owner, _, ownerError) = ResolveOwner();
+        if (ownerError is not null)
+        {
+            return StorefrontResult<Abstractions.Cart.Cart>.Failure(ownerError);
+        }
+        var idemKey = BuildIdempotencyKey("UpdateQuantity", owner!.Value, cmd.IdempotencyToken);
+        if (idemKey is not null)
+        {
+            var cached = await _idempotency
+                .TryGetAsync<StorefrontResult<Abstractions.Cart.Cart>>(idemKey, ct)
+                .ConfigureAwait(false);
+            if (cached.HasValue)
+            {
+                return cached.GetValueOrDefault(default);
+            }
         }
 
         var loadResult = await GetCurrentCartAsync(ct).ConfigureAwait(false);
@@ -234,7 +287,9 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
 
         var updated = Recompute(cart with { LineItems = nextLines });
         await _store.SaveAsync(updated, ct).ConfigureAwait(false);
-        return StorefrontResult<Abstractions.Cart.Cart>.Success(updated);
+        var result = StorefrontResult<Abstractions.Cart.Cart>.Success(updated);
+        await RememberAsync(idemKey, result, ct).ConfigureAwait(false);
+        return result;
     }
 
     /// <inheritdoc/>
@@ -298,6 +353,125 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
         return StorefrontResult<Abstractions.Cart.Cart>.Success(updated);
     }
 
+    /// <inheritdoc/>
+    public async Task<StorefrontResult<Abstractions.Cart.Cart>> PromoteGuestCartAsync(
+        Guid guestSessionId,
+        CancellationToken ct)
+    {
+        if (!_identity.IsAuthenticated || !_identity.CurrentCustomerId.HasValue)
+        {
+            return StorefrontResult<Abstractions.Cart.Cart>.Failure(new StorefrontAuthenticationError(
+                Message: "Promotion requires an authenticated customer.",
+                CorrelationId: Guid.NewGuid().ToString("N")));
+        }
+
+        var customerId = _identity.CurrentCustomerId.GetValueOrDefault(Guid.Empty);
+        var customerOwner = CartOwner.FromCustomer(customerId);
+        var guestOwner = CartOwner.FromGuest(guestSessionId);
+        var tenantId = _identity.CurrentTenantId;
+
+        var guestCartOpt = await _store.FindByOwnerAsync(guestOwner, tenantId, ct).ConfigureAwait(false);
+        var customerCartOpt = await _store.FindByOwnerAsync(customerOwner, tenantId, ct).ConfigureAwait(false);
+
+        // No guest cart (or empty one) → just return / create the customer cart.
+        if (!guestCartOpt.HasValue || guestCartOpt.GetValueOrDefault(default!).LineItems.Count == 0)
+        {
+            if (guestCartOpt.HasValue)
+            {
+                await _store.DeleteByOwnerAsync(guestOwner, tenantId, ct).ConfigureAwait(false);
+            }
+            if (customerCartOpt.HasValue)
+            {
+                return StorefrontResult<Abstractions.Cart.Cart>.Success(customerCartOpt.GetValueOrDefault(default!));
+            }
+            var emptyForCustomer = NewEmptyCart(customerOwner, tenantId);
+            await _store.SaveAsync(emptyForCustomer, ct).ConfigureAwait(false);
+            return StorefrontResult<Abstractions.Cart.Cart>.Success(emptyForCustomer);
+        }
+
+        var guestCart = guestCartOpt.GetValueOrDefault(default!);
+        var customerCart = customerCartOpt.HasValue
+            ? customerCartOpt.GetValueOrDefault(default!)
+            : NewEmptyCart(customerOwner, tenantId);
+
+        var mergeResult = await MergeAndRevalidateAsync(customerCart.LineItems, guestCart.LineItems, ct)
+            .ConfigureAwait(false);
+        if (mergeResult.IsFailure)
+        {
+            return StorefrontResult<Abstractions.Cart.Cart>.Failure(
+                mergeResult.Match<StorefrontError>(_ => throw new InvalidOperationException("unreachable"), e => e));
+        }
+        var lines = mergeResult.Match(ls => ls, _ => throw new InvalidOperationException("unreachable"));
+
+        if (lines.Count > _options.MaxCartLineItems)
+        {
+            return Invalid(
+                $"Merged cart cannot exceed {_options.MaxCartLineItems} distinct lines.",
+                "MergedCart.LineItems",
+                "Cart.MaxLineItemsExceededOnPromote");
+        }
+
+        var promoted = Recompute(customerCart with { LineItems = lines });
+        await _store.SaveAsync(promoted, ct).ConfigureAwait(false);
+        await _store.DeleteByOwnerAsync(guestOwner, tenantId, ct).ConfigureAwait(false);
+        return StorefrontResult<Abstractions.Cart.Cart>.Success(promoted);
+    }
+
+    private async Task<StorefrontResult<IReadOnlyList<CartLineItem>>> MergeAndRevalidateAsync(
+        IReadOnlyList<CartLineItem> customerLines,
+        IReadOnlyList<CartLineItem> guestLines,
+        CancellationToken ct)
+    {
+        var byKey = customerLines.ToDictionary(
+            li => (li.ProductId, li.VariantId),
+            li => li);
+
+        foreach (var guestLine in guestLines)
+        {
+            var key = (guestLine.ProductId, guestLine.VariantId);
+            if (byKey.TryGetValue(key, out var customerLine))
+            {
+                byKey[key] = customerLine with
+                {
+                    Quantity = customerLine.Quantity + guestLine.Quantity,
+                };
+            }
+            else
+            {
+                byKey[key] = guestLine;
+            }
+        }
+
+        var revalidated = new List<CartLineItem>(byKey.Count);
+        foreach (var line in byKey.Values)
+        {
+            var productResult = await _catalog.GetProductAsync(line.ProductId, language: null, ct).ConfigureAwait(false);
+            if (productResult.IsFailure)
+            {
+                return StorefrontResult<IReadOnlyList<CartLineItem>>.Failure(
+                    productResult.Match<StorefrontError>(_ => throw new InvalidOperationException("unreachable"), e => e));
+            }
+            var product = productResult.Match(p => p, _ => throw new InvalidOperationException("unreachable"));
+            if (!product.IsAvailable)
+            {
+                // Drop unavailable lines silently — the catalog changed; the cart-render UI
+                // can highlight what was removed if it cares.
+                continue;
+            }
+            var unitPrice = ResolveVariantPrice(product, line.VariantId);
+            revalidated.Add(line with
+            {
+                UnitAmountCents = unitPrice.AmountCents,
+                LineSubtotalCents = unitPrice.AmountCents * line.Quantity,
+                Currency = unitPrice.Currency,
+                DisplayName = product.Name,
+                Thumbnail = product.Media.FirstOrDefault(),
+            });
+        }
+
+        return StorefrontResult<IReadOnlyList<CartLineItem>>.Success(revalidated);
+    }
+
     private (CartOwner? owner, StorefrontOption<Guid> tenantId, StorefrontError? error) ResolveOwner()
     {
         var tenantId = _identity.CurrentTenantId;
@@ -331,6 +505,7 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
                 Currency = "USD",
             },
             CreatedAt = now,
+            ExpiresAt = now + _options.CartLifetime,
         };
     }
 
@@ -347,11 +522,24 @@ public sealed class DefaultStorefrontCartService : IStorefrontCartService
             GrandTotalCents = subtotal,
             Currency = currency,
         };
+        var now = _clock.GetUtcNow();
         return cart with
         {
             Totals = totals,
-            UpdatedAt = _clock.GetUtcNow(),
+            UpdatedAt = now,
+            ExpiresAt = now + _options.CartLifetime,
         };
+    }
+
+    private static string? BuildIdempotencyKey(string commandKind, CartOwner owner, string? token) =>
+        string.IsNullOrWhiteSpace(token)
+            ? null
+            : $"{commandKind}|{(int)owner.Kind}|{owner.Id:N}|{token}";
+
+    private async Task RememberAsync(string? key, StorefrontResult<Abstractions.Cart.Cart> result, CancellationToken ct)
+    {
+        if (key is null) return;
+        await _idempotency.SetAsync(key, result, _options.IdempotencyCacheTtl, ct).ConfigureAwait(false);
     }
 
     private static StorefrontPrice ResolveVariantPrice(StorefrontProduct product, string? variantId)
