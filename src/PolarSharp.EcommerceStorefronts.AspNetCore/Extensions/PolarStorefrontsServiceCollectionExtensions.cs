@@ -19,13 +19,14 @@ public static class PolarStorefrontsServiceCollectionExtensions
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
-    /// <strong>SCAFFOLD WARNING (pre-v1.4.0):</strong> the registered cart / customer /
-    /// checkout / guest-session services throw <see cref="NotImplementedException"/> on
-    /// first call (Phase 25.x) and the 17 pipeline stages no-op pass-through (Phase 26.x).
-    /// AddPolarStorefronts also registers
-    /// <see cref="StorefrontScaffoldDiagnosticService"/>, a hosted service that emits a
-    /// <see cref="Microsoft.Extensions.Logging.LogLevel.Critical"/> log on host startup
-    /// naming every scaffold. DO NOT ship to production while the diagnostic is firing.
+    /// As of v1.4.0 Phase 25 the storefront-core cart, checkout, customer, and
+    /// guest-session services ship real implementations. Remaining scaffolds:
+    /// the 17 order-processing / subscription-billing / refund-processing pipeline
+    /// stages (Phase 26), the default <c>NullStorefrontCustomerSource</c>, and the
+    /// in-process default stores. <see cref="StorefrontScaffoldDiagnosticService"/>
+    /// emits a <see cref="Microsoft.Extensions.Logging.LogLevel.Warning"/> on host
+    /// startup naming each remaining piece so an operator can audit before going to
+    /// production.
     /// </para>
     /// <para>
     /// This is the ONE-LINE composition hosts call. Bridge packages
@@ -42,8 +43,10 @@ public static class PolarStorefrontsServiceCollectionExtensions
         services.AddPolarStorefrontsCore(configure);
         services.AddPolarGuestSessions();
 
-        // Critical-level scaffold diagnostic — fires once on host startup. Removed when
-        // every Phase 25.x / 26.x scaffold has been replaced with a real implementation.
+        // Warning-level scaffold diagnostic — fires once on host startup naming the
+        // remaining Phase 26 pipeline stages + the in-process default stores + the
+        // Null customer-source default so operators can audit before going to
+        // production. Removed when those pieces ship real implementations.
         services.AddHostedService<StorefrontScaffoldDiagnosticService>();
 
         return services;
