@@ -67,6 +67,297 @@ These limitations get explicit markers in the CHANGELOG and DocFX articles so co
 
 ---
 
+## Architectural framing — Polar.sh as Merchant of Record (MoR)
+
+Added 2026-05-20 after a code review surfaced this framing had never been written down despite being foundational. Every future doc, narrative, agent prompt, and architectural decision must respect it.
+
+**Polar.sh operates as a Merchant of Record (MoR).** For every transaction that flows through Polar's checkout — whether a one-time purchase, a subscription renewal, or a refund — Polar.sh:
+
+1. Calculates the correct sales tax / VAT / GST for the customer's jurisdiction
+2. Collects that tax from the customer at checkout
+3. Files the appropriate tax returns with the relevant tax authorities
+4. Remits the collected tax to those authorities on behalf of the merchant
+
+The tenant (the actual merchant whose products are being sold) does NOTHING for tax compliance on those transactions. This is one of the primary value propositions of using Polar.sh — merchants offload the most painful operational burden of e-commerce.
+
+**The implication for PolarSharp's architecture.** PolarSharp does NOT need to ship a tax-computation provider for the standard Polar-checkout path. The work has already been done by Polar. Shipping a TaxJar / Avalara binding "as a default" implies merchants need to think about tax, which contradicts Polar's value prop and would confuse users into installing unnecessary infrastructure.
+
+**The exception — when MoR coverage doesn't apply.** Three scenarios bypass Polar's MoR coverage and create tax obligations PolarSharp must help its users handle:
+
+1. **Wallet-only customer checkout** (per `PolarSharp.PrepaidWallets.Polar.Checkout`'s `PolarWalletCheckoutInterceptor` "wallet-only" mode): the end customer's purchase is satisfied entirely from their prepaid wallet balance; Polar.sh never sees the transaction; the **tenant** becomes the legal taxpayer for that sale.
+2. **Hybrid checkout** (same package's "hybrid" mode): the wallet covers part of the purchase, Polar covers the rest. Polar handles MoR for its slice; the **tenant** is taxpayer for the wallet slice.
+3. **Settlement Mode D — TenantPrefundedWallet** (per PrepaidWallets amendment 6 for SaaS-revenue collection): the SaaS provider's per-operation cuts are debited from each tenant's tenant-wallet in real-time rather than invoiced separately; for the SaaS's own income recognition + sales-tax obligations on its SaaS services, the **SaaS provider** must track revenue independently of Polar's MoR coverage.
+
+These three scenarios are addressed by the **Wallet Tax Responsibility (WTR) framework** specified in the next section.
+
+**Cross-references**:
+- Inline XML doc on `IPolarBusinessProfileService.BuildBankingSetupDeepLink` already establishes that PolarSharp does not talk to Stripe; this MoR framing is the parallel principle for tax.
+- The "Banking and payouts" section in `docs/articles/ecommerce-catalog.md` already documents the analogous Stripe Connect handoff; tax framing belongs in the wallet article(s).
+
+---
+
+## Wallet Tax Responsibility (WTR) framework — v1.3.x / v1.4.x landing
+
+Designed 2026-05-20 after a user-surfaced question about TaxJar's role in v1.4.0. Single framework that covers BOTH actor perspectives (tenant-perspective wallet-only sales tax + SaaS-perspective per-tenant revenue tax) using the same primitives, because the architectures are isomorphic (one level apart in the actor hierarchy).
+
+### The two-actor model
+
+The same `WalletDebited` event is viewed from two perspectives depending on who's asking:
+
+| Perspective | The wallet | The debit | Tax-relevant party | When MoR coverage gap exists |
+|---|---|---|---|---|
+| **Tenant** | End customer's wallet at a tenant marketplace | End customer pays for a product/service | **Tenant** (the marketplace operator) | Wallet-only customer checkout OR hybrid (wallet slice) |
+| **SaaS** | Tenant's tenant-wallet with the SaaS provider | SaaS deducts its per-operation cuts | **SaaS provider** | Settlement Mode D (TenantPrefundedWallet) |
+
+**Both perspectives use the same wallet event stream** — different aggregations, different jurisdictional rules, different reports. ONE framework, two views.
+
+### Five components
+
+#### Component 1 — Acknowledgment (hard gate, not dismissable popup)
+
+Two flows:
+
+- **Tenant acknowledgment** when enabling wallet-only or hybrid checkout for their marketplace. Captured to `wallet_tax_acknowledgments` (per-tenant table) with timestamp + actor user + acknowledged-jurisdiction list. Re-acknowledgment required when tenant adds operations in a new jurisdiction.
+- **SaaS acknowledgment** at PolarSharp installation (regardless of settlement mode) AND at the moment Settlement Mode D is first enabled for any tenant. Captured to `saas_tax_acknowledgments` (non-tenant-scoped; SaaS-only).
+
+Both flows have a "snooze 7 days to talk to my accountant first" option that keeps the feature DISABLED until acknowledged.
+
+#### Component 2 — Funding-source-aware estimated tax calculators
+
+Two estimator services sharing one rate-table backbone:
+
+- **`TenantTaxEstimator`** — computes tenant's tax owed on wallet-only / hybrid customer debits. Reads `FundingSources` allocations on each `WalletDebited` event (per the Phase 20 coordination note that added funding-source provenance to wallet event signatures). Applies tax treatment per source kind (e.g. `CustomerCashFunded` = fully taxable, `TenantPromotionalGrant` = discount-reduces-basis by default; jurisdiction-configurable).
+- **`SaaSTaxEstimator`** — computes SaaS's tax owed on per-tenant revenue across all settlement modes. Differentiates revenue types (subscription / funding-cut / transaction-cut / maintenance-fee-cut / refund-surcharge-cut) and per-tenant jurisdiction for sales-tax nexus analysis.
+
+Both estimators ship a `BasicEstimatedTaxCalculator` default with a quarterly-updated static rate table covering:
+- Every US state's sales tax rate (50 + DC)
+- Every US state's corporate income tax rate (where applicable; 8 states have no corporate income tax)
+- EU VAT standard rates per member country (27 countries)
+- GST rates for AU, NZ, CA, IN, SG, etc.
+- US federal corporate income tax rate (21% flat post-TCJA)
+
+Labeled "estimate only — not filing-grade" in every output. Tenants/SaaS needing certified accuracy install a real `IStorefrontTaxProvider` (or analogous `ISaaSTaxProvider`) implementation.
+
+#### Component 3 — Comprehensive tax-owed reports (BOTH quarterly + annual + accumulative)
+
+Per the user's 2026-05-20 expanded ask: each report shows period-to-date accumulation, full-period projection (PTD run-rate × time-remaining), prior-period comparison for trend visibility, and breakdowns by tax TYPE not just jurisdiction.
+
+##### `TenantTaxOwedReport(tenantId, asOfDate)`
+
+Returns a hierarchical shape:
+
+```
+CurrentQuarter:
+  Label: "Q2 2026"
+  StartDate: 2026-04-01, EndDate: 2026-06-30, DaysElapsed: N, DaysRemaining: M
+  EstimatedPaymentDeadline: 2026-06-15
+  DaysUntilDeadline: K
+
+  PTD (period-to-date, through asOfDate):
+    TaxableSales: $X
+    TaxOwed:
+      Federal:          { Type: "income_tax",     EstimatedOwed: $X }
+      State:            [
+        { Code: "US-CA", Type: "sales_tax",  TaxableBase: $X, RateBps: 887, EstimatedOwed: $X },
+        { Code: "US-CA", Type: "income_tax", TaxableBase: $X, RateBps: 884, EstimatedOwed: $X },
+        { Code: "US-NY", Type: "sales_tax",  TaxableBase: $X, RateBps: 800, EstimatedOwed: $X },
+        ...
+      ]
+      Foreign:          [
+        { Code: "DE-VAT", Type: "vat",       TaxableBase: $X, RateBps: 1900, EstimatedOwed: $X },
+        { Code: "AU-GST", Type: "gst",       TaxableBase: $X, RateBps: 1000, EstimatedOwed: $X },
+        ...
+      ]
+      GrandTotal: $X
+
+  Projected (full quarter, based on PTD run-rate):
+    [same structure as PTD]
+
+CurrentYearToDate:
+  Label: "2026"
+  YearStart: 2026-01-01, AsOfDate, DaysElapsed: N
+  AnnualReturnDeadline: 2027-04-15
+
+  YTD:    [same TaxOwed structure as PTD]
+  Projected (full year): [same]
+
+PriorYearSamePeriod:
+  Label: "2025 (through May 20)"
+  TaxOwed: [same structure]   # comparison context
+
+QuarterlyTrend:
+  [Q1 2026: total $X, Q2 2026 PTD: $Y, Q3 2026: pending, Q4 2026: pending]
+
+FundingSourceBreakdown:
+  CustomerCashFundedTaxable: $X            # fully taxable basis from cash-funded debits
+  GiftCardActivationTaxable: $X            # fully taxable basis from gift-card redemptions
+  RefundAsCreditTaxable: $X                # fully taxable basis from refund credits
+  PromotionalGrantBasisReduction: -$X      # how much the rewards/promo grants reduced taxable basis
+  ... per FundingSourceKind ...
+
+Disclaimer: "These are estimates based on published rates as of each transaction's date. Not certified for filing. Consult a licensed tax professional in each listed jurisdiction before filing or remitting."
+```
+
+CSV / JSON / Excel export. Per-tenant scoped (Audience tier: Tenant operator + SaaSAdmin with `[AllowCrossTenant]` only).
+
+##### `SaaSTaxOwedReport(asOfDate)`
+
+Same hierarchical shape, scoped to the SaaS provider's revenue:
+
+```
+CurrentQuarter:
+  Label: "Q2 2026"
+  ... (same date dimensions)
+  EstimatedPaymentDeadline: 2026-06-15      # IRS Form 1120-W federal quarterly deadline
+
+  PTD:
+    Revenue:
+      Subscription:           $X         # ongoing $/month from each tenant
+      FundingCut:             $X         # 5% (default) cuts on wallet funding operations
+      TransactionCut:         $X         # 4.75% on non-prepaid Polar transactions
+      MaintenanceFeeCut:      $X         # 50% of dormancy fees
+      RefundSurchargeCut:     $X         # 50% of refund surcharges
+      GrandTotal:             $X
+
+    EstimatedExpenses: $X                 # configurable; default: industry-typical 20% margin assumption
+    EstimatedNetProfit: $X                # Revenue - EstimatedExpenses (for income-tax basis)
+
+    TaxOwed:
+      Federal:    { Type: "corporate_income_tax", EstimatedRate: 21%, EstimatedOwed: $X }
+      State:      [
+        { Code: "US-DE", Type: "corporate_income_tax", Basis: $X, RateBps: 870, EstimatedOwed: $X },
+        # only states where SaaS has nexus AND tax applies to corporate income
+      ]
+      SalesTaxOnSaasServices: [
+        # only states where SaaS has nexus AND state taxes SaaS services
+        { Code: "US-NY", Type: "sales_tax_on_saas", Basis: $X, RateBps: 800, EstimatedOwed: $X },
+        ...
+      ]
+      Foreign: [
+        # if SaaS bills EU tenants, B2B reverse-charge mechanism may apply
+        { Code: "DE-VAT", Type: "vat_on_saas", Basis: $X, RateBps: 1900, EstimatedOwed: $X, ReverseChargeApplies: true },
+        ...
+      ]
+      GrandTotal: $X
+
+  Projected (full quarter): [same structure]
+
+CurrentYearToDate: [same]
+PriorYearSamePeriod: [same]
+QuarterlyTrend: [same]
+
+PerTenantRevenueBreakdown:
+  # which tenants generated which revenue in this quarter
+  - TenantId, TenantName, TenantJurisdiction, Revenue:$X, SettlementMode
+  - ... one row per tenant
+  # for nexus analysis: where are revenue-contributing tenants located?
+
+PerSettlementModeBreakdown:
+  StripeConnect:               $X    # SaaS cut routed via application_fee_amount at point of charge
+  BundledMonthlyInvoice:       $X    # cuts settled via monthly Polar invoice to tenant
+  StandalonePolarOrder:        $X    # cuts settled via separate Polar Order
+  TenantPrefundedWallet:       $X    # cuts deducted from tenant-wallet in real-time (THE one needing the most attention)
+
+Disclaimer: "Estimates only. Federal estimated tax payments due quarterly per IRS Form 1120-W schedule. State deadlines vary. Consult a licensed CPA before filing."
+```
+
+Audience tier: SaaSAdmin only (with `[RequirePolarPermission(ViewSaasTaxReport)]`).
+
+Both reports support these output formats: CSV, JSON, Excel (multi-sheet workbook with per-jurisdiction tabs), PDF (for handoff to accountant).
+
+#### Component 4 — Quarterly deadline reminder service
+
+`SaaSTaxDeadlineReminderService` IHostedService (and `TenantTaxDeadlineReminderService` analog):
+- Knows each jurisdiction's tax calendar (IRS federal quarterlies: Apr 15, Jun 15, Sep 15, Jan 15; state deadlines vary; EU VAT typically monthly or quarterly)
+- 21 days before each deadline: sends a Notice notification to billing contacts: *"Q2 federal estimated tax deadline is Jun 15. Your YTD revenue is $X with estimated quarterly federal tax of $Y. View report."*
+- 7 days before: sends a Warning escalation
+- 1 day before: sends an Urgent escalation
+- Uses the same wallet notification dispatcher as the v1.3 amendment 3 framework — no parallel infrastructure
+- Tenant escalation policy + SaaS escalation policy both honor recipient preferences
+
+#### Component 5 — Settlement-mode-aware revenue ledger
+
+`saas_revenue_ledger` (non-tenant-scoped table; SaaS owns it):
+
+```
+saas_revenue_ledger
+  id                       UNIQUEIDENTIFIER PK
+  tenant_id                UNIQUEIDENTIFIER         -- which tenant generated this revenue
+  tenant_jurisdiction      NVARCHAR(8)              -- tenant's primary jurisdiction (for SaaS nexus analysis)
+  revenue_type             NVARCHAR(32)             -- subscription | funding_cut | transaction_cut | maintenance_fee_cut | refund_surcharge_cut
+  settlement_mode          NVARCHAR(32)             -- StripeConnect | BundledMonthlyInvoice | StandalonePolarOrder | TenantPrefundedWallet
+  amount_cents             INT
+  currency                 NVARCHAR(3)
+  recognized_at_utc        DATETIME2                -- revenue-recognition date for tax purposes (accrual basis)
+  collected_at_utc         DATETIME2 NULL           -- when SaaS actually received cash (cash basis); may differ
+  related_wallet_event_id  UNIQUEIDENTIFIER NULL    -- when sourced from a wallet debit
+  related_polar_order_id   NVARCHAR(64) NULL        -- when sourced from a Polar order
+  related_invoice_id       NVARCHAR(64) NULL        -- when sourced from a bundled invoice
+  -- indexes:
+  --   ix_recognized_at_utc (recognized_at_utc DESC)            for time-range queries
+  --   ix_tenant_id (tenant_id, recognized_at_utc DESC)         for per-tenant queries
+  --   ix_revenue_type (revenue_type, recognized_at_utc DESC)   for revenue-type breakdown queries
+```
+
+Source of truth for the SaaS tax reports. Every settlement mode writes here uniformly; reports aggregate over this ledger without provider-specific code paths.
+
+### Tax-type matrix (what's computed for each tax type)
+
+| Tax type | Estimator inputs | Computation | Who owes |
+|---|---|---|---|
+| **US state sales tax** | jurisdiction code, taxable basis (from FundingSources × treatment rules) | basis × per-state rate | Tenant (wallet-only sales) / SaaS (if state taxes SaaS services + SaaS has nexus) |
+| **US state corporate income tax** | jurisdiction code, estimated net profit (Revenue - estimated expenses) | net profit × per-state corporate rate | SaaS (where it has nexus) |
+| **US federal corporate income tax** | estimated net profit | net profit × 21% | SaaS |
+| **EU VAT** | EU country code, taxable basis, B2B-vs-B2C indicator (reverse-charge rules) | basis × per-country VAT rate; zero for B2B reverse-charge | Tenant (wallet-only EU sales) / SaaS (if billing EU tenants outside B2B reverse-charge scope) |
+| **GST (AU/NZ/CA/IN/etc.)** | country code, taxable basis | basis × per-country GST rate | Tenant (wallet-only sales in those countries) / SaaS (if billing into those countries) |
+
+### TaxJar binding — decision (revised 2026-05-20 after PR #3)
+
+Initial framing (during the design discussion earlier 2026-05-20): remove the concrete TaxJar binding to eliminate the suppressed RestSharp vulnerability + the maintenance burden. The user picked Option B (keep abstraction, remove binding).
+
+**Revised framing** after PR #3 landed (`a9170c1`, "chore(cpm): override transitive RestSharp to 114.0.0 to lift CI vuln gate"):
+- The user enabled `CentralPackageTransitivePinningEnabled=true` in `Directory.Packages.props` and pinned `RestSharp` to `114.0.0` as a transitive override. This satisfies TaxJar 4.0.0's `RestSharp >= 108.0.3` floor while lifting the codebase out of GHSA-4rr6-2v9v-wcpc (CRLF injection affecting RestSharp versions in [107.0.0-preview.1, 112.0.0)).
+- TaxJar 4.0.0 + RestSharp 114.0.0 (transitively pinned) now ships safely; no CI vuln-scan failures.
+- `src/PolarSharp.EcommerceStorefronts.Tax.TaxJar/` remains `IsPackable=false` with zero hand-written source files — it's a scaffold awaiting the v1.4.0 integration work.
+
+**Net decision (as of 2026-05-20)**:
+- **Keep** the `IStorefrontTaxProvider` abstraction (unchanged).
+- **Keep** the TaxJar scaffold package; do NOT delete it. The vuln-driven rationale for removal is gone. The package can be filled in during v1.4.0 if WTR's `BasicEstimatedTaxCalculator` + bring-your-own-implementation pattern proves insufficient for the wallet-only mode use case.
+- **Re-evaluate** the pin (and whether to actually implement TaxJar vs only ship the abstraction) when v1.4.0's TaxJar integration is in flight. The decision then depends on whether real-world tenant demand for a concrete TaxJar binding materializes.
+- WTR's `BasicEstimatedTaxCalculator` covers the ballpark-figure case for free; tenants needing certified accuracy can install whichever third-party tax provider they prefer (TaxJar, Avalara, Stripe Tax, custom) via the `IStorefrontTaxProvider` seam.
+
+### Phase plan
+
+WTR ships as a new phase between PrepaidWallets bridges (Phase 22) and v1.3 doc sweep (Phase 23):
+
+- **Phase 20** (current — wallet agent's active work): adds funding-source provenance to wallet event signatures per the coordination note. NO tax computation logic.
+- **Phase 21** (per-provider EF Core wallet event stores): no WTR-specific work; tenant_id indexes need to be present (per the coordination note).
+- **Phase 22** (Polar bridges for wallet): no WTR-specific work.
+- **Phase 22.5 (NEW) — WTR framework implementation**:
+  - Estimated 25-40 source files + 25-40 tests
+  - 1 DocFX article: `docs/articles/wallet-tax-responsibility.md`
+  - 2 Implementation Narratives:
+    - `docs/narratives/understanding-tax-when-you-use-wallet-only-checkout.md` (audience: tenant operators)
+    - `docs/narratives/saas-tax-tracking-and-quarterly-reporting.md` (audience: SaaS deployers)
+  - Per-package READMEs
+  - Lift-shift posture: WTR's tenant-perspective tooling sits in `PolarSharp.PrepaidWallets.Tax.*` (lift-safe core); SaaS-perspective tooling sits in `PolarSharp.PrepaidWallets.Polar.Tax.*` bridge (couples to PolarSharp.MultiTenant.Identity for SaaSAdmin authz)
+  - Audience-tier respecting GraphQL exposure: SaaS report only visible to SaaSAdmin; tenant report visible to tenant operators
+- **Phase 23** (existing v1.3 doc sweep): no WTR-specific work; the docs agent's current scope doesn't include WTR
+
+### Open question — escalation posture (deferred)
+
+When a tenant or the SaaS has growing estimated unfiled tax and hasn't generated a report in N days, what's the appropriate platform response?
+
+| Option | Posture | What it does |
+|---|---|---|
+| **A — passive** | Least paternalistic | Surface the info; tenant decides |
+| **B — nudge** | Middle | Send escalating reminders as estimated unpaid tax grows; gentle nags via notification system |
+| **C — gate** | Most protective | Auto-disable wallet-only mode if estimated unfiled tax exceeds threshold AND no report generated in N days |
+
+To be decided at Phase 22.5 design-finalization. Default working assumption: B (nudge) for both tenant and SaaS perspectives; preserve A as configurable for tenants who explicitly opt out of nudges; C is too paternalistic for v1 but may be added later as an opt-in safety mode.
+
+---
+
 ## v1.4.0 — Test App Refresh + EcommerceStorefronts WebComponents
 
 **Status:** design phase (2026-05-19); implementation scheduled after v1.3.0 ships.
