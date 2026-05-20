@@ -234,7 +234,10 @@ public sealed class LitestreamConfigGeneratorTests
 
         Assert.Contains("sync-interval: 7s", yaml, StringComparison.Ordinal);
         Assert.Contains("snapshot-interval: 45m", yaml, StringComparison.Ordinal);
-        Assert.Contains("retention: 14d", yaml, StringComparison.Ordinal);
+        // Retention is emitted as hours (days × 24) because Litestream's YAML parser
+        // calls Go's time.ParseDuration, which understands h/m/s but NOT 'd'. 14 days = 336h.
+        // See Phase 2e fix in LitestreamConfigGenerator.cs.
+        Assert.Contains("retention: 336h", yaml, StringComparison.Ordinal);
     }
 
     [Fact]

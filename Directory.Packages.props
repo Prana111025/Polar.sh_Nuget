@@ -64,9 +64,19 @@
     <PackageVersion Include="Testcontainers.MariaDb" Version="4.11.0" />
     <PackageVersion Include="Testcontainers.MsSql" Version="4.11.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.11.0" />
+    <!-- v1.2.x Phase 2e: MinIO module for the Litestream end-to-end integration test.
+         MinIO is the S3-compatible store Litestream replicates the per-tenant *.db files into.
+         The official `Minio` SDK creates the bucket up-front (Testcontainers.Minio doesn't
+         auto-create) and verifies the replicated objects appear after Litestream syncs. We
+         use it instead of AWSSDK.S3 specifically to avoid the transitive AWSSDK.Core 4.0.2
+         vulnerability (GHSA-9cvc-h2w8-phrp); the Minio SDK has no AWS dep chain. -->
+    <PackageVersion Include="Testcontainers.Minio" Version="4.11.0" />
+    <PackageVersion Include="Minio" Version="6.0.5" />
     <!-- v1.2.x Phase 2d: SkippableFact lets the Cosmos integration tests report Skipped (not
          Failed) on hosts where the Cosmos Linux emulator can't boot — e.g. some Apple Silicon
-         configurations where the multi-arch vnext-preview image still hits edge cases. -->
+         configurations where the multi-arch vnext-preview image still hits edge cases.
+         Phase 2e reuses the same package to stay green on hosts that can't pull the
+         litestream/litestream image. -->
     <PackageVersion Include="Xunit.SkippableFact" Version="1.5.23" />
     <!-- Benchmarks -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />

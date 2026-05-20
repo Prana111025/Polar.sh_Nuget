@@ -33,11 +33,21 @@
     <PackageReference Include="Testcontainers.MariaDb" />
     <PackageReference Include="Testcontainers.MsSql" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <!-- v1.2.x Phase 2e: MinIO container + official Minio .NET SDK for the Litestream
+         end-to-end test. The test stands up a MinIO Testcontainer, a Litestream sidecar
+         container reading a host-bind-mounted SQLite directory, and verifies the *.db
+         files replicate to the MinIO bucket end-to-end. The Minio SDK creates the bucket
+         and verifies the replicated objects (Testcontainers.Minio doesn't auto-create
+         buckets). The SDK has no AWS dependency chain, sidestepping the AWSSDK.Core
+         vulnerability that NU1901 would surface. -->
+    <PackageReference Include="Testcontainers.Minio" />
+    <PackageReference Include="Minio" />
     <!-- v1.2.x Phase 2d: SkippableFact for the Cosmos integration tests. The Cosmos Linux
          emulator is the least bulletproof of the four Testcontainers — its ARM64 support is
          multi-arch via vnext-preview but not bulletproof. SkippableFact lets the Cosmos tests
          report Skipped (with a captured diagnostic message) instead of Failed when the
-         emulator can't boot on the host. -->
+         emulator can't boot on the host. Phase 2e reuses the same package to stay green on
+         hosts that can't pull the litestream/litestream image. -->
     <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 

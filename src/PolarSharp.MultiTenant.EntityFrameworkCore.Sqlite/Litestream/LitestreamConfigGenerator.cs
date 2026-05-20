@@ -190,7 +190,13 @@ public sealed class LitestreamConfigGenerator
 
     private static void AppendReplica(StringBuilder sb, LitestreamOptions options, string fileNameWithoutExt)
     {
-        var retention = options.RetentionDays.ToString(CultureInfo.InvariantCulture);
+        // Litestream parses 'retention' via Go's time.ParseDuration, which understands
+        // h / m / s / ms / us / ns but NOT 'd' (days). Emit the configured RetentionDays
+        // as a multiple of hours so the YAML round-trips through the real binary
+        // (RetentionDays=1 -> "24h", RetentionDays=30 -> "720h"). The earlier "Nd" form
+        // produced a "cannot unmarshal !!str `1d` into time.Duration" error on Litestream
+        // 0.3.13+, surfaced by the Phase 2e end-to-end integration test.
+        var retention = (options.RetentionDays * 24).ToString(CultureInfo.InvariantCulture) + "h";
         switch (options.ReplicaTargetType)
         {
             case LitestreamReplicaTargetType.S3:
@@ -227,7 +233,7 @@ public sealed class LitestreamConfigGenerator
         {
             sb.AppendLine("        force-path-style: true");
         }
-        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}d");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}");
     }
 
     private static void AppendAzureBlobReplica(StringBuilder sb, LitestreamAzureBlobOptions azure, string fileName, string retention)
@@ -237,7 +243,7 @@ public sealed class LitestreamConfigGenerator
         sb.AppendLine(CultureInfo.InvariantCulture, $"        account-key: ${{{azure.AccessKeyEnvVar}}}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"        bucket: {azure.Container}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"        path: {CombinePrefix(azure.PathPrefix, fileName)}");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}d");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}");
     }
 
     private static void AppendGcsReplica(StringBuilder sb, LitestreamGoogleCloudStorageOptions gcs, string fileName, string retention)
@@ -246,7 +252,7 @@ public sealed class LitestreamConfigGenerator
         sb.AppendLine(CultureInfo.InvariantCulture, $"        bucket: {gcs.Bucket}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"        path: {CombinePrefix(gcs.PathPrefix, fileName)}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"        credentials-path: {gcs.CredentialsJsonPath}");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}d");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}");
     }
 
     private static void AppendSftpReplica(StringBuilder sb, LitestreamSftpOptions sftp, string fileName, string retention)
@@ -256,14 +262,14 @@ public sealed class LitestreamConfigGenerator
         sb.AppendLine(CultureInfo.InvariantCulture, $"        user: {sftp.User}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"        path: {CombinePrefix(sftp.Path, fileName)}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"        key-path: {sftp.PrivateKeyPath}");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}d");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}");
     }
 
     private static void AppendLocalDiskReplica(StringBuilder sb, LitestreamLocalDiskOptions local, string fileName, string retention)
     {
         sb.AppendLine("      - type: file");
         sb.AppendLine(CultureInfo.InvariantCulture, $"        path: {Path.Combine(local.Path, fileName)}");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}d");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"        retention: {retention}");
     }
 
     private static string CombinePrefix(string prefix, string fileName)
