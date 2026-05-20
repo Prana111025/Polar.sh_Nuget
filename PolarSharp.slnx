@@ -136,5 +136,9 @@
     <Project Path="tests/PolarSharp.Reporting.GraphQL.Tests/PolarSharp.Reporting.GraphQL.Tests.csproj" />
     <Project Path="tests/PolarSharp.Reporting.Identity.Tests/PolarSharp.Reporting.Identity.Tests.csproj" />
     <Project Path="tests/PolarSharp.DataSeeding.Tests/PolarSharp.DataSeeding.Tests.csproj" />
+    <Project Path="tests/PolarSharp.PrepaidWallets.Abstractions.Tests/PolarSharp.PrepaidWallets.Abstractions.Tests.csproj" />
+    <Project Path="tests/PolarSharp.PrepaidWallets.Tests/PolarSharp.PrepaidWallets.Tests.csproj" />
+    <Project Path="tests/PolarSharp.PrepaidWallets.EventStore.Marten.Tests/PolarSharp.PrepaidWallets.EventStore.Marten.Tests.csproj" />
+    <Project Path="tests/PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore.Tests/PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore.Tests.csproj" />
   </Folder>
 </Solution>

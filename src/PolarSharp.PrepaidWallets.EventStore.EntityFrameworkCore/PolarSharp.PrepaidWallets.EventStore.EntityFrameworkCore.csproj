@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PolarSharp.PrepaidWallets\PolarSharp.PrepaidWallets.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
   </ItemGroup>
 
 </Project>

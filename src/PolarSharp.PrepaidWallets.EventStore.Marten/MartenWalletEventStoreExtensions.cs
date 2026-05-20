@@ -1,5 +1,7 @@
 using Marten;
 using Microsoft.Extensions.DependencyInjection;
+using PolarSharp.PrepaidWallets.Abstractions.Events;
+using PolarSharp.PrepaidWallets.Abstractions.Stores;
 
 namespace PolarSharp.PrepaidWallets.EventStore.Marten;
 
@@ -32,8 +34,28 @@ public static class MartenWalletEventStoreExtensions
         {
             opts.Connection(postgresConnectionString);
             opts.DatabaseSchemaName = schemaName;
-            // Wallet event-type registration + projection wiring lands in Phase 20.x.
+            // Guid stream keys are Marten's default; the wallet uses the WalletId.Value Guid directly.
+            opts.Events.AddEventType(typeof(WalletOpened));
+            opts.Events.AddEventType(typeof(WalletFunded));
+            opts.Events.AddEventType(typeof(WalletDebited));
+            opts.Events.AddEventType(typeof(WalletCredited));
+            opts.Events.AddEventType(typeof(WalletRefunded));
+            opts.Events.AddEventType(typeof(WalletFrozen));
+            opts.Events.AddEventType(typeof(WalletUnfrozen));
+            opts.Events.AddEventType(typeof(WalletClosed));
+            opts.RegisterDocumentType<MartenWalletSnapshotDocument>();
+
+            // Snapshot-side tenant index — enables fast "show me every tenant's wallet snapshots
+            // as-of right now" queries for the Phase 22.5 WTR framework. The event-side tenant
+            // index (cross-tenant event aggregation across date ranges) is a Phase 21 follow-up
+            // because Marten's events table needs a tenant_id projection set up explicitly via
+            // metadata or a custom multi-stream projection.
+            opts.Schema.For<MartenWalletSnapshotDocument>()
+                .Index(x => x.TenantId);
         });
+
+        services.AddSingleton<IWalletEventStore, MartenWalletEventStore>();
+        services.AddSingleton<IWalletSnapshotStore, MartenWalletSnapshotStore>();
 
         return services;
     }
