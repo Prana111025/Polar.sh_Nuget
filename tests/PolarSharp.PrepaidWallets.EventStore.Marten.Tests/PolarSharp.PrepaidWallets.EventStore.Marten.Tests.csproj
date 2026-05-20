@@ -19,6 +19,9 @@
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" VersionOverride="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.Logging" VersionOverride="10.0.7" />
+    <!-- Testcontainers-backed Postgres integration tests for Marten event-store + snapshot store (Phase 21 deferred-gap closure 2026-05-20). -->
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Marten" />
   </ItemGroup>
 
   <ItemGroup>

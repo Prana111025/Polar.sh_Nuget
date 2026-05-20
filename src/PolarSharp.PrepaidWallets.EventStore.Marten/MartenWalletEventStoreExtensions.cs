@@ -2,6 +2,8 @@ using Marten;
 using Microsoft.Extensions.DependencyInjection;
 using PolarSharp.PrepaidWallets.Abstractions.Events;
 using PolarSharp.PrepaidWallets.Abstractions.Stores;
+using PolarSharp.PrepaidWallets.Serialization;
+using Weasel.Core;
 
 namespace PolarSharp.PrepaidWallets.EventStore.Marten;
 
@@ -34,6 +36,22 @@ public static class MartenWalletEventStoreExtensions
         {
             opts.Connection(postgresConnectionString);
             opts.DatabaseSchemaName = schemaName;
+
+            // Marten defaults to System.Text.Json without our custom converters for the wallet
+            // value types (Option<T>, IdempotencyKey, WalletId, TokenAmount). Without these
+            // registrations, every wallet event append throws "Option has no value (it is None)"
+            // when System.Text.Json's default reflection-based serializer tries to read .Value on
+            // a None option. Wire the same converters the EF Core event store uses so the same
+            // events round-trip uniformly across both backends.
+            opts.UseSystemTextJsonForSerialization(EnumStorage.AsString, configure: stj =>
+            {
+                stj.Converters.Add(new OptionGuidJsonConverter());
+                stj.Converters.Add(new OptionLongJsonConverter());
+                stj.Converters.Add(new OptionStringJsonConverter());
+                stj.Converters.Add(new IdempotencyKeyJsonConverter());
+                stj.Converters.Add(new WalletIdJsonConverter());
+                stj.Converters.Add(new TokenAmountJsonConverter());
+            });
             // Guid stream keys are Marten's default; the wallet uses the WalletId.Value Guid directly.
             opts.Events.AddEventType(typeof(WalletOpened));
             opts.Events.AddEventType(typeof(WalletFunded));
