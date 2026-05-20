@@ -23,6 +23,7 @@
     <ProjectReference Include="..\PolarSharp.PrepaidWallets.Abstractions\PolarSharp.PrepaidWallets.Abstractions.csproj" />
     <PackageReference Include="MediatR" />
     <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
 </Project>
