@@ -1,0 +1,295 @@
+# TASKS.md
+
+Authoritative task list for active and pending agentic work.
+
+Use task IDs such as TASK-001. Include owner, status, dependencies, acceptance criteria, and verification steps.
+
+---
+
+## v2.0 — Honest deferrals from v1.2.0
+
+The v1.2.0 release ships 25 new packages, 12 migration sets, and 441/441 passing tests. The following work was intentionally deferred — the abstractions, signatures, and DI registrations are in place, but the underlying Polar HTTP wiring is stubbed. Each task below restores live behavior or addresses a known limitation.
+
+### TASK-V20-001 — Wire IPolarCatalogPublisher.PublishAsync to Polar HTTP
+
+- **Status:** Deferred from v1.2.0 → planned for v2.0
+- **Owner:** unassigned
+- **Project:** Polar.sh_Nuget — PolarSharp.EcommerceStoreManagement
+- **Context:** The publisher orchestrates local → Polar sync for products, benefits, discounts, and checkout links in dependency order. v1.2.0 ships the orchestration shell (preview/dry-run, plan computation, per-outcome persistence) but does NOT hit Polar's API; instead it logs "publish requested" and returns a Stub outcome.
+- **What to do:** Implement the live HTTP path using `PolarClient.Organizations`, `PolarClient.OrganizationAccessTokens`, `PolarClient.Webhooks`, `PolarClient.Products`, `PolarClient.Benefits`, `PolarClient.Discounts`, `PolarClient.CheckoutLinks`. Honor idempotency via persisted `PolarProductId`/`PolarBenefitId`/etc. Wire variant + tier expansion, dependency order, partial-failure resume.
+- **Acceptance:** Integration test (sandbox) seeds 10 products with variants and tiers, publishes successfully, re-publish is a no-op, simulated network drop mid-publish resumes from `OutOfSync` correctly.
+
+### TASK-V20-002 — Wire IRefundService to Polar /v1/refunds
+
+- **Status:** Deferred → v2.0
+- **Owner:** unassigned
+- **Project:** PolarSharp.EcommerceStoreManagement
+- **Context:** Full and partial refund APIs are defined and audit-log integrated; stub returns `Stubbed` outcome.
+- **What to do:** Replace stub in `IssueFullRefundAsync` / `IssuePartialRefundAsync` / `ListForOrderAsync` with calls through `PolarClient.Refunds`.
+- **Acceptance:** Integration test against Polar sandbox: create order → issue partial refund → list refunds shows it → issue second partial → totals reconcile.
+
+### TASK-V20-003 — Wire ILicenseKeyValidator to Polar /v1/license-keys/{id}/validate
+
+- **Status:** Deferred → v2.0
+- **Owner:** unassigned
+- **Project:** PolarSharp.EcommerceStoreManagement
+- **Context:** Caching, grace-period semantics, and `[RequireValidLicense]` filter are in place; the actual Polar call is stubbed.
+- **What to do:** Replace stub with `PolarClient.LicenseKeys` validate call. Map response to `LicenseValidationResult`.
+- **Acceptance:** Integration test validates a real sandbox license key, asserts cache hit on second call, asserts grace-period detection for expired keys.
+
+### TASK-V20-004 — Wire IPolarBusinessProfileService.SaveAsync to Polar Organizations PATCH
+
+- **Status:** Deferred → v2.0
+- **Owner:** unassigned
+- **Project:** PolarSharp.EcommerceStoreManagement
+- **Context:** Local persistence of `TenantBusinessProfile` works; writable fields (country, currency, tax behavior, OrganizationDetails) currently stay local only.
+- **What to do:** On `SaveAsync`, PATCH the writable subset to `PolarClient.Organizations`. Read-back `account_id`/`payout_account_id` and update local mirror. Also wire `RefreshPayoutStatusAsync` to live polling.
+- **Acceptance:** Integration test saves profile, asserts Polar org reflects country/currency/tax behavior change. Payout poller transitions `NotStarted → InProgress → Ready` correctly against sandbox.
+
+### TASK-V20-005 — Wire IReportSnapshotService to Polar resource endpoints
+
+- **Status:** ✅ Done — closed 2026-05-14 at commit `358e242`
+- **Owner:** unassigned
+- **Project:** PolarSharp.Reporting
+- **Context:** Snapshot tables (orders, line items, refunds, subscriptions, customers, benefit grants, events) are created via migrations; `RunSnapshotAsync` returns an empty report.
+- **What landed:**
+  - **Phase 1B–1H** — live wirings for the 7 new resources (products, customer-meters, license-keys, benefits, meters, checkout-links, discounts) with paired live-sandbox tests
+  - **Phase 1.5** — live wirings for the original 5 resources (events, orders, subscriptions, customers, benefit-grants) with paired live-sandbox tests
+  - **Phase 2** — `PerTenantSnapshotOrchestrator` + `IReportSnapshotTrigger` (per-tenant timer + heartbeat + idle-timeout + completion-event channel)
+  - **Phase 3** — new `PolarSharp.Reporting.Identity` bridge package: `PolarSnapshotSignInManager` + `PolarSnapshotHeartbeatMiddleware` so Identity sign-in/sign-out drives the orchestrator automatically
+  - **Phase 3 follow-up** — `PolarSnapshotTestApp` end-to-end demo app (separate from `PolarTestApp` to keep the AOT smoke test on the AOT-clean library code)
+  - **Default `IPolarTenantScopeInitializer`** — closes the V20-005 Phase 2 design gap; two-phase API (`ResolveTenantAsync` + `SetCurrentTenant` extension) to work around AsyncLocal scoping
+  - **Migration drift catch-up** — `ModelDriftCatchup` migrations across all 3 providers for the 7 new resource tables
+  - **Drilldown E2E + 10k-customer perf gate** — `HierarchicalDrilldownEndToEndTests` (6 functional + 1 perf)
+  - **Idempotency integration test** — `SnapshotIdempotencyIntegrationTests` (live sandbox; re-run yields zero new rows on every per-resource counter)
+  - **SQLite `DateTimeOffset` ORDER BY fix** — provider-conditional value converter so the drilldown queries work on all 3 providers
+- **Acceptance verified:** Idempotency test asserts re-run = no-op; perf test asserts 10k-customer top-level page < 100ms.
+- **Deferred to v2.x (NOT blocking V20-005 closure):**
+  - Order line items: Polar's `OrderItemSchema` doesn't expose `ProductId`; need `ProductPriceId → ProductId` lookup against the prices snapshot
+  - Order refunds: Polar's Order has no nested refunds list; needs separate top-level `/v1/refunds/` ingestion pass with its own checkpoint
+  - `BenefitGrant.BenefitName/Kind` enrichment: currently placeholder (`BenefitId` / `"unknown"`); needs join against benefits snapshot
+  - `Event.PayloadJson`: Polar list endpoint omits the payload blob; needs per-event GETs (N+1) or a webhook-tap alternative
+
+### TASK-V20-006 — Wire KiotaPolarOnboardingApi using v1.1.0 Kiota resource builders
+
+- **Status:** Deferred → v2.0
+- **Owner:** unassigned
+- **Project:** PolarSharp.Onboarding
+- **Context:** `IPolarOnboardingClient` programmatic + wizard flows are fully implemented through to the HTTP boundary; the bottom layer (`KiotaPolarOnboardingApi`) returns a stub `OnboardedTenantResult`.
+- **What to do:** Implement using `PolarClient.Organizations` (POST), `PolarClient.OrganizationAccessTokens` (POST), `PolarClient.Webhooks.Endpoints` (POST), `PolarClient.Oauth2.Token` (POST). Handle OAuth code → token exchange. Honor `OnboardingOptions.Server` (Sandbox/Production).
+- **Acceptance:** Wizard end-to-end test against sandbox provisions a real org, captures real OAT (once-readable), registers a real webhook endpoint, returns populated `OnboardedTenantResult`. EfMultiTenantStoreSink persists it; subsequent webhook delivery against the new tenant succeeds.
+
+### TASK-V20-007 — Reconcile FakeDataSyncService toggle branches
+
+- **Status:** Deferred → v2.0 (depends on TASK-V20-001)
+- **Owner:** unassigned
+- **Project:** PolarSharp.DataSeeding
+- **Context:** `AllowFakeData` OFF↔ON toggle fires `FakeDataToggleChanged`; the service listens but the OFF→ON publish and ON→OFF archive branches are stubbed pending the catalog publisher's HTTP wiring.
+- **What to do:** Once TASK-V20-001 lands, replace stub branches with `IPolarCatalogPublisher.PublishAsync(scope=AllFakeData)` and `ArchiveAllAsync(predicate: x => x.IsFakeData)`. Confirm `Metadata["polar_sharp_is_fake_data"]="true"` is set on every published fake record so the snapshot ingester preserves the marker.
+- **Acceptance:** Integration test: seed fake data with `AllowFakeData=true`, flip to false, assert all fake products in Polar sandbox are archived; flip back to true, assert they're un-archived. No `IsFakeData=false` records touched.
+
+### TASK-V20-008 — Add RLS DDL to initial migrations for SqlServer + PostgreSQL
+
+- **Status:** Deferred → v2.0
+- **Owner:** unassigned
+- **Project:** PolarSharp.MultiTenant.EntityFrameworkCore.{SqlServer,PostgreSQL} + identity/catalog/reporting equivalents
+- **Context:** The plan calls for database-layer Row-Level Security on every tenant-owned table (Layer 2 of the 5-layer cross-tenant safeguard). v1.2.0 ships the EF query filter (Layer 1) and the session interceptors (`SqlServerTenantSessionInterceptor`, `PostgreSqlTenantSessionInterceptor`) but the initial migrations do NOT add `CREATE SECURITY POLICY` (SqlServer) or `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` + `CREATE POLICY` (PostgreSQL).
+- **What to do:** Add raw-SQL DDL via `migrationBuilder.Sql(...)` in each initial migration. For SqlServer, create the `tenant_filter` table-valued function + `tenant_security_policy` SECURITY POLICY with FILTER + BLOCK predicates on every `ITenantOwned` table. For PostgreSQL, enable + force RLS and add the `tenant_isolation` policy referencing `current_setting('app.current_tenant_id', true)` and `current_setting('app.is_app_master_admin', true)`. The session interceptor already sets both session vars per request.
+- **Acceptance:** Add a `Category=RlsBypass` test that opens a raw `SqlConnection` / `NpgsqlConnection` (bypassing EF), sets the session var to Tenant A, attempts to SELECT WHERE tenant_id = Tenant B, asserts zero rows returned. Re-run with `is_app_master_admin=true` and assert the query returns rows (AppMasterAdmin bypass confirmed).
+
+### TASK-V20-009 — Commission extensive integration tests
+
+- **Status:** Standing commission for v2.0 (user-requested 2026-05-13)
+- **Owner:** unassigned
+- **Project:** Polar.sh_Nuget — all packages
+- **Context:** v1.2.0 ships 441 unit tests; integration coverage against Polar's sandbox API is light because HTTP wiring is deferred (TASKs V20-001 through V20-006). As each HTTP wire-up task above lands, the corresponding integration test suite must be filled out.
+- **What to do:** As a continuing commission alongside each TASK-V20-001..006: write `[Trait("Category","Integration")]` tests against Polar sandbox for the live flow. Coverage targets:
+  - Onboarding: programmatic + OAuth + wizard end-to-end (TASK-V20-006)
+  - Catalog publish: idempotency, partial-failure resume, variant + tier expansion, dependency order (TASK-V20-001)
+  - Refunds: full, partial, listing (TASK-V20-002)
+  - License validation: valid, expired-in-grace, revoked, max-activations (TASK-V20-003)
+  - Business profile: PATCH + payout poller (TASK-V20-004)
+  - Reporting snapshot: idempotency, checkpoint advance, pre-aggregate accuracy (TASK-V20-005)
+  - Fake-data toggle sync: OFF→ON publish + ON→OFF archive against real sandbox (TASK-V20-007)
+  - RLS bypass: raw-connection cross-tenant read blocked (TASK-V20-008)
+  - KeyCloak SSO: full OIDC flow against a KeyCloak Testcontainer
+  - EF Core provider matrix: per-provider isolation, migration idempotency, health-check states
+- **Acceptance:** Each TASK-V20-xxx above lists at least one integration test as part of its own acceptance; the umbrella commission is satisfied when those tests exist and run green in CI's `integration-test` job (separate from the unit-test gate, gated by sandbox credentials).
+
+---
+
+## v1.3.0 — Missing Service Implementations (active)
+
+Discovered 2026-05-13 that about half the v1.2.0 service surface is interface-only. v1.3.0 builds the missing concrete implementations + the `AddPolarEcommerce()` / `AddPolarReporting()` orchestrator extensions, in 8 sub-phases. See `~/PLAN.md` for the full rationale and current state.
+
+### TASK-V13-001 — Sub-phase 1.3.A: TranslationProviderResolver
+
+- **Status:** in progress — implementation file (`EfTranslationProviderResolver.cs`, 148 LOC) committed inadvertently as part of doc commit `1347e01`. Tests + DI registration pending.
+- **Owner:** Claude / project owner
+- **Project:** PolarSharp.EcommerceStoreManagement.EntityFrameworkCore
+- **What's done:** Implements the documented 3-tier resolution (per-tenant via `TenantBusinessProfileEntity`, master via `IOptionsMonitor<EcommerceTranslationMasterOptions>`, disabled fallthrough). Decrypts per-tenant API keys via ASP.NET Core Data Protection `IDataProtectionProvider.ForTranslationApiKey()`. Quietly falls through on missing factory + on decryption failure (warning logs).
+- **What's left:** `EfTranslationProviderResolverTests.cs` covering the 6 documented resolution paths. Plan: introduce an `ITenantBusinessProfileLookup` abstraction so tests can supply profiles without spinning up a full `PolarCatalogDbContext` + Finbuckle context. Add a minimal `AddTranslationResolver()` extension method registering the resolver as scoped; the full `AddPolarEcommerce()` orchestrator follows in TASK-V13-007.
+- **Acceptance:** Tests cover the 6 paths; resolver wired into DI via the extension method; full test suite passes.
+
+### TASK-V13-002 — Sub-phase 1.3.B: EfCatalogRepository + EfTranslationRepository + PolarCatalogReader
+
+- **Status:** Not started
+- **Project:** PolarSharp.EcommerceStoreManagement (`PolarCatalogReader`) + PolarSharp.EcommerceStoreManagement.EntityFrameworkCore (the repos)
+- **What to build:**
+  - `EfCatalogRepository : ICatalogRepository` — EF data access for products/variants/categories/etc.
+  - `EfTranslationRepository : ITranslationRepository` — upsert/get/invalidate for `catalog_translations` rows
+  - `PolarCatalogReader : IPolarCatalogReader` — `GetProductLocalizedAsync` etc.; reassembles master + translation rows per requested language with master-language fallback per field; integrates `IPolarCatalogTranslationCache` for warm-on-read
+- **Acceptance:** Unit tests for reassembly (master only / partial translation / full translation). Per-tenant query-filter scoping verified.
+
+### TASK-V13-003 — Sub-phase 1.3.C: RefundService + LicenseKeyValidator
+
+- **Status:** Not started; depends on TASK-V13-002 (uses repositories for audit/cache persistence)
+- **Project:** PolarSharp.EcommerceStoreManagement
+- **What to build:**
+  - `RefundService : IRefundService` — wraps `PolarClient.Refunds` for IssueFullRefundAsync / IssuePartialRefundAsync / ListForOrderAsync. Writes to admin audit log.
+  - `LicenseKeyValidator : ILicenseKeyValidator` — wraps `PolarClient.LicenseKeys`; caches successful validations in `IMemoryCache` for configurable TTL (default 60s); grace-period support reading per-tenant override or global default (7 days)
+- **Acceptance:** Unit tests for caching, grace-period boundary, refund audit-log capture.
+
+### TASK-V13-004 — Sub-phase 1.3.D: BusinessProfileService + InventoryUpdater
+
+- **Status:** Not started
+- **Project:** PolarSharp.EcommerceStoreManagement
+- **What to build:**
+  - `PolarBusinessProfileService : IPolarBusinessProfileService` — local SQL persistence plus PATCH to `PolarClient.Organizations` for writable fields (country, currency, tax behaviour, OrganizationDetails). Read-only `account_id` / `payout_account_id` mirroring via `RefreshPayoutStatusAsync`. `BuildBankingSetupDeepLink` returns a URL to Polar's dashboard (no Stripe API call ever — see committed docs).
+  - `InventoryUpdater : IInventoryUpdater` — local count updates; emits `SkuStockChanged` to a bounded `Channel<>` consumed by a separate `InventoryToPolarSyncService` `IHostedService` that PATCHes `is_archived` on zero-boundary transitions only.
+- **Acceptance:** Unit tests for the channel zero-boundary detection, payout-status FSM transitions, and PATCH-vs-local field-set separation.
+
+### TASK-V13-005 — Sub-phase 1.3.E: PolarCatalogPublisher
+
+- **Status:** Not started — the largest sub-phase
+- **Project:** PolarSharp.EcommerceStoreManagement
+- **What to build:** `PolarCatalogPublisher : IPolarCatalogPublisher`. Implements `PreviewAsync` (computes the dependency-ordered `PublishPlan`) and `PublishAsync` (executes it). Variant expansion (1 local product with N variants → N Polar products with `polar_sharp_variant_axes` metadata). Tier expansion (1 local tier group with 3 tiers → 3 Polar products with cumulative benefit bundles). Idempotency via persisted `LocalProduct.PolarProductId` (POST when null, PATCH otherwise). Partial-failure resume: each outcome persisted as we go; restartable from `PublishStatus.OutOfSync`.
+- **Acceptance:** Unit tests for variant + tier expansion, dependency-order computation, idempotency on re-publish, resume-from-OutOfSync.
+
+### TASK-V13-006 — Sub-phase 1.3.F: ReportSnapshotService
+
+- **Status:** Not started
+- **Project:** PolarSharp.Reporting + PolarSharp.Reporting.EntityFrameworkCore
+- **What to build:** `ReportSnapshotService : IReportSnapshotService`. Paginates `/v1/events/`, `/v1/orders/`, `/v1/subscriptions/`, `/v1/customers/` from PolarClient; persists into the snapshot tables; advances `ReportSnapshotCheckpoint.LastPolarId` per resource per tenant. Recomputes pre-aggregated columns (`OrderCount`, `LifetimeValue`, `LineItemCount`, `RefundedAmount`) used by the hierarchical drilldown.
+- **Acceptance:** Idempotency test (re-run = no duplicate rows). Checkpoint-advance test. Pre-aggregate column accuracy test.
+
+### TASK-V13-007 — Sub-phase 1.3.G: AddPolarEcommerce + AddPolarReporting orchestrator extensions
+
+- **Status:** Not started; depends on TASK-V13-001..006
+- **Project:** PolarSharp.EcommerceStoreManagement (the extension class), PolarSharp.Reporting (its extension class)
+- **What to build:**
+  - `AddPolarEcommerce()` extension on `IServiceCollection` (or on an `IPolarSharpBuilder`) that registers every service from TASK-V13-001..005 plus the audit-log `SaveChangesInterceptor` plus all 5 cloning services
+  - `AddPolarReporting()` similar for the reporting service
+- **Acceptance:** A host calling `services.AddPolarEcommerce()` can resolve `IRefundService`, `ILicenseKeyValidator`, `IPolarCatalogPublisher`, etc. without any further registration. Same for `IReportSnapshotService` via `AddPolarReporting()`.
+
+### TASK-V13-008 — Sub-phase 1.3.H: Release artifacts
+
+- **Status:** Not started
+- **What to build:**
+  - Bump versions: all EcommerceStoreManagement-family packages 1.0.0 → 1.0.1 (or .NET-style 1.0.0 → 1.1.0 if you want to be clearer that these are functional additions); same for Reporting-family. The 4 v1.1.0-origin packages bump 1.2.1 → 1.3.0.
+  - Write the CHANGELOG `[1.3.0]` entry explaining what landed
+  - Update DocFX articles to remove "stubbed" markers
+  - Run the full test suite (target ≥441 passing, all new tests for v1.3.0 included)
+  - Tag `v1.3.1` (or whatever fits the bump decision) and push
+- **Acceptance:** Tag pushed, CI publish run green, packages live on GitHub Packages.
+
+---
+
+## v2.0 — New feature designs (added 2026-05-13 during v1.3.H pre-commit pass)
+
+### TASK-V20-010 — Tenant store clone / export-import (new feature)
+
+- **Status:** Not started — v2.0
+- **Project:** New optional package `PolarSharp.EcommerceStoreManagement.Migration` (with EF Core provider sub-packages — SqlServer / Sqlite / PostgreSQL — only if the export format differs by provider; the JSON format itself is provider-agnostic)
+- **Problem:** A tenant wants to clone their entire store into another PolarSharp-driven environment — typically when forking a sandbox into production, or migrating from one host deployment to another. Manual re-entry of products / categories / benefits / discounts / checkout links / translations is hours of work and error-prone.
+- **What to build:**
+  - `ITenantExporter.ExportAsync(TenantId tenantId, ExportOptions options, Stream output, CancellationToken ct)` — serialises every `ITenantOwned` row for the tenant to JSON (default) or CSV-zipped (option). Schema version embedded in the envelope. Excludes the Polar-side ids (`PolarProductId`, `PolarBenefitId`, etc.) so the import side gets a clean "republish from scratch" state. Includes / excludes `IsFakeData=true` rows via `ExportOptions.IncludeFakeData` (default false).
+  - `ITenantImporter.ImportAsync(TenantId targetTenantId, Stream input, ImportOptions options, CancellationToken ct)` — replays the export into a fresh tenant. Validates schema version, validates `targetTenantId` is empty (or merges per `ImportOptions.ConflictPolicy`), regenerates internal ids, re-runs `IPolarCatalogPublisher.PublishAsync` afterwards so the new tenant has a fresh Polar org wired up.
+  - JSON shape: `{ "schemaVersion": "1.0", "tenantId": "...", "exportedAt": "...", "products": [...], "categories": [...], "benefits": [...], "discounts": [...], "checkoutLinks": [...], "translations": [...], "businessProfile": {...} }`. NOT included: AuditLog (history is per-deployment), Reporting snapshots (rebuilt by snapshot service), Identity memberships (per-deployment users), Polar-side ids.
+  - Encrypted-at-rest fields (translation API key on `TenantBusinessProfile`) re-encrypted with the target environment's key ring at import time. The export bundles only the encrypted blob plus a marker that says "needs re-encryption against target keyring"; if the target lacks the source's data-protection keys (the common cross-environment case), the field is dropped at import and the tenant must re-enter via the business-profile UI.
+  - `[RequirePolarPermission(ExportTenantData)]` gates export; `[RequireAppMasterAdmin]` plus `[AllowCrossTenant]` gates import.
+- **Acceptance:** Round-trip test (export → import into a fresh in-memory tenant → assert all rows present and Polar-ids cleared). Schema-version-mismatch rejection test. Conflict-policy test. Cross-environment data-protection-keyring test (encrypted fields dropped + warning logged).
+- **Coupled with TASK-V20-011** (wipe): both features ship together so a tenant can "export, wipe, re-onboard, import" as one workflow.
+
+### TASK-V20-011 — Tenant store reset / wipe with safeguards (new feature)
+
+- **Status:** Not started — v2.0
+- **Project:** New `ITenantWipeService` in `PolarSharp.EcommerceStoreManagement` core + EF impl in `.EntityFrameworkCore`
+- **Problem:** A tenant wants to blow away their entire ecommerce setup — typically after a botched onboarding or a major model migration — and start fresh. Currently the host has to write tenant-row DELETE statements by hand across 12+ tables, with no audit trail and no rollback safety.
+- **What to build:**
+  - `ITenantWipeService.PreviewAsync(TenantId tenantId, CancellationToken ct)` — returns a `TenantWipePreview { ProductRowCount, CategoryRowCount, BenefitRowCount, DiscountRowCount, CheckoutLinkRowCount, TranslationRowCount, AuditLogRowCount, ... }` so the host's confirmation dialog shows exactly what will be deleted.
+  - `ITenantWipeService.WipeAsync(TenantId tenantId, TenantWipeRequest request, CancellationToken ct)` with structured safeguards on `TenantWipeRequest`:
+    1. **`ConfirmationToken`** — single-use token previously issued by `RequestConfirmationTokenAsync(tenantId)`; expires in 5 minutes; usable once
+    2. **`TypedTenantSlug`** — caller types the tenant's slug verbatim; service rejects on mismatch
+    3. **`AcknowledgedNoRollback : true`** — explicit boolean; defaults to false; service rejects on false
+    4. **`AutoExportBeforeWipe : true`** (default) — service runs `ITenantExporter.ExportAsync` first and writes the result to `request.ExportBackupSink` BEFORE deleting anything. Failure to write the backup blocks the wipe. The host can opt out (`AutoExportBeforeWipe=false`) only with an explicit `BypassExportReason` string the audit log captures
+  - Authorization: `[RequireAppMasterAdmin]` PLUS `[AllowCrossTenant]` PLUS optional `[RequireMfaWithinLastNMinutes(15)]`. NO tenant-scoped role can wipe — even `TenantAdmin` lacks this permission.
+  - Audit: writes BOTH the tenant's `AdminAuditLogEntry` AND the platform-level `PlatformAuditLogEntry` with `Action=Delete`, `EntityType="Tenant"`, full snapshot of the row counts deleted, the typed slug, the actor identity, the optional `BypassExportReason`, and (if `AutoExportBeforeWipe=true`) a reference to the backup blob location
+  - Polar-side cleanup: optional `request.AlsoArchiveInPolar : bool` — if true, every published product / benefit / discount / checkout link is `is_archived: true`'d in Polar before local DELETE. Polar has no DELETE, so the post-wipe state in Polar is "archived but inspectable for compliance." If false, Polar rows are orphaned (the tenant's Polar organization keeps the products visible until manually cleaned via Polar's dashboard)
+  - **Hard impossibility:** wipe cannot be invoked from any tenant-scoped API surface, no matter what permission flag is held. The endpoint is on a platform-admin route ONLY. The `ITenantWipeService` interface itself throws `InvalidOperationException` if resolved from a scope where `ICurrentUser.IsAppMasterAdmin == false`
+- **Acceptance:** Confirmation-token expiry test (token issued 6 minutes ago → rejected). Slug-mismatch test. `AcknowledgedNoRollback=false` rejection test. AutoExportBeforeWipe failure-to-write rejection test. Audit-trail dual-write test (tenant log + platform log). Service-resolution-blocked-from-tenant-scope test.
+- **Coupled with TASK-V20-010** (clone): the auto-export uses the export feature. Tasks ship together.
+
+### TASK-V20-012 — RLS DDL actually in initial migrations (UPGRADE from TASK-V20-008)
+
+- **Status:** Not started — v2.0 (P1 from production-readiness audit)
+- **Problem:** `TenantAwareDbContextBase.cs:28-32` documents a "layer 2 defense" via SQL Server / PostgreSQL Row-Level Security policies, but `grep -rn "CREATE POLICY|ENABLE ROW LEVEL|sp_set_session_context" src` returns zero hits. The migrations don't include the RLS DDL. Today's only line of defense is the EF query filter.
+- **What to do:** Generate proper RLS migrations for SQL Server (`CREATE SECURITY POLICY tenant_security_policy ...`) and PostgreSQL (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY; CREATE POLICY tenant_isolation ON ... USING (tenant_id::text = current_setting('app.current_tenant_id', true))`). Wire connection interceptors that set the session variable on every connection open. Add cross-tenant raw-SQL bypass tests proving RLS blocks the read at the database layer.
+- **See:** `PRODUCTION-READINESS-ANALYSIS.md` for the full audit context.
+
+### TASK-V20-013 — AuditLogSaveChangesInterceptor (actually exist) ✅ DONE 2026-05-19
+
+- **Status:** Done. The 2026-05-19 codebase stub audit (Section 3 #2) flagged this task as stale: the interceptor IS implemented (225-line `SaveChangesInterceptor` at `src/PolarSharp.EcommerceStoreManagement.EntityFrameworkCore/AuditLogSaveChangesInterceptor.cs`), registered Scoped in `CatalogServicesExtensions`, and attached via `AddInterceptors` in all 5 provider extensions: `SqliteCatalogBuilderExtensions`, `SqlServerCatalogBuilderExtensions`, `PostgreSqlCatalogBuilderExtensions`, `MariaDbCatalogBuilderExtensions`, `CosmosDbCatalogBuilderExtensions`. Status updated to reflect reality.
+- **Original problem (resolved):** `AdminAuditLogEntry.cs:7-9` referenced an `AuditLogSaveChangesInterceptor` that didn't exist at the time of the production-readiness audit. Now it does.
+- **Implementation:** `SaveChangesInterceptor.SavingChanges*` inspects `ChangeTracker.Entries<ITenantOwned>()`, captures before/after values via `entry.OriginalValues` / `entry.CurrentValues`, and emits `AdminAuditLogEntry` rows in the same transaction (per the original spec).
+- **Outstanding:** No paired regression test was identified during the audit verifying that a mutation through a path WITHOUT explicit `auditLog.AddAsync(...)` still captures the entry via the interceptor. Optional follow-up.
+- **See:** `PRODUCTION-READINESS-ANALYSIS.md` for the original audit context.
+
+### TASK-V20-014 — Restore server-side query translation on SQL Server / PostgreSQL
+
+- **Status:** Not started — v2.0 (P1 at scale, from production-readiness audit)
+- **Problem:** `EfAdvancedReportingClient` uniformly applies a materialise-then-filter pattern to dodge a SQLite limitation. On SQL Server / PostgreSQL the same code materialises entire orders / customers / events tables client-side on every advanced report. At scale this is unviable.
+- **What to do:** Either (a) introduce a provider-specific override path so SQL Server / PostgreSQL keep the filter server-side while SQLite falls back to materialise-then-filter, or (b) rewrite the queries with `ToLocalTime()` or `DateTime` boundary conversions that all three providers can translate. Approach (a) is cleaner; approach (b) is more invasive but provider-uniform.
+- **See:** `PRODUCTION-READINESS-ANALYSIS.md` for the full audit context.
+
+### TASK-V20-015 — Top 10 v2.0 priorities from PRODUCTION-READINESS-ANALYSIS.md
+
+- **Status:** Not started — v2.0 (multi-item umbrella)
+- **What to do:** Walk the "Top 10 priorities for v2.0" section of `PRODUCTION-READINESS-ANALYSIS.md` and seed each as its own TASK-V20-NNN entry once the v2.0 cycle begins. Document already exists at `/Users/mollsandhersh/Repos/Polar.sh_Nuget/PRODUCTION-READINESS-ANALYSIS.md` with file:line references and severity ratings.
+
+### TASK-V20-016 — Bump GitHub Actions to Node 24
+
+- **Status:** Not started — v2.0 (maintenance; deadline 2026-06-02 before runners force-upgrade)
+- **Problem:** v1.3.0 CI run surfaced deprecation warnings on `actions/checkout@v4`, `actions/setup-dotnet@v4`, `actions/upload-artifact@v4`. GitHub forces Node 24 by default on 2026-06-02; Node 20 removed from runners 2026-09-16.
+- **What to do:** Bump the three actions in `.github/workflows/ci.yml` and `.github/workflows/docs.yml` to the Node-24-compatible versions (likely `@v5` or whatever's current at the time). Validate with a tag run.
+
+### TASK-V20-019 — Webhook payload capture + offline analyzer
+
+- **Status:** Approved 2026-05-14 (spec at `/Users/mollsandhersh/Repos/Polar.sh_Nuget/DESIGN-V20-019-WEBHOOK-CAPTURE-AND-ANALYZER.md`); not started
+- **Scheduled:** v2.0 Pillar 2 (production hardening), after V20-005 Phase 1B–1H complete
+- **Problem:** PolarSharp webhook tests today use synthetic-but-cryptographically-real payloads (we generate the JSON + HMAC-sign locally). We never confirm that the JSON Polar actually sends matches what our `WebhookXxxData` records expect. Polar can add fields, deprecate fields, ship new event types, or change enum values and our tests stay green because they're testing themselves.
+- **Solution:** Capture verified webhook payloads to a sink (file system / DB / blob), run an analyzer over the corpus offline, report on coverage / schema drift / unknown event types / handler-coverage gaps / field-value statistics. Wire as CI pre-publish gate.
+
+- **Implementation phases (from the design doc):**
+  - **2A** — `IWebhookPayloadCapture` interface in core + `NoOpWebhookPayloadCapture` default + pipeline integration (post-verify, pre-dispatch) + opt-in config plumbing. ~2 hours
+  - **2B** — `PolarSharp.Webhooks.Capture.FileSystem` package: write impl + prune `IHostedService` + integration test. ~2 hours
+  - **2C** — `PolarSharp.Webhooks.Capture.EntityFrameworkCore` base + 3 SQL providers + entity + config + 3 migrations + prune job. ~4 hours
+  - **2D** — `PolarSharp.Webhooks.Analyzer` library: coverage report + schema-drift via reflection against `WebhookXxxData` records + unknown-event detection + handler-coverage check + field-value stats. ~4 hours
+  - **2E** — `dotnet polarsharp-webhook-analyze` CLI tool + JSON output + `--fail-on-unknown` / `--fail-on-drift` exit codes. ~2 hours
+  - **2F** — Corpus-replay test pattern + synthesized fixture set (≥1 sample per `WebhookXxxData` type) + CI workflow step invoking the analyzer. ~2 hours
+  - **2G** — `PolarSharp.Webhooks.Capture.AzureBlob` and `.S3` packages. Deferred to v2.x. ~3 hours
+  - **2H** — Docs: `docs/articles/webhook-payload-capture.md` (privacy + setup + retention) + `docs/articles/webhook-corpus-analysis.md` (analyzer usage + CI integration). ~1 hour
+
+- **Must-have set for v2.0:** 2A + 2B + 2D + 2F + 2H (~12 hours). 2C (DB sink) and 2E (CLI tool) are highly desirable; 2G defers to v2.x.
+
+- **Privacy invariants (mandatory; spelled out in the design doc):**
+  - All sink packages disabled by default; hosts opt in via `PolarSharp:Webhooks:Capture:Enabled=true`
+  - Even when enabled, only explicitly-listed event types capture
+  - Existing `IPolarPiiRedactor` invoked on raw JSON before write (emails / names / addresses redacted automatically)
+  - 7-day default retention with daily prune `IHostedService`
+  - **Fingerprint-only mode** (schema-only, no values) safe for indefinite retention — recommended default per the design's open-question lean
+  - Repo-committed `tests/.../Corpus/` samples MUST be synthesized — never derived from real captures without anonymisation
+
+- **Acceptance:** synthetic fixture set committed; analyzer reports correctly identify a missing handler / unknown event type / dropped field in a fixture-driven test; CI step invokes analyzer with appropriate `--fail-on-*` flags; documentation articles explain privacy defaults and operator opt-in flow.
+
+- **Open questions deferred to implementation time:** see the design doc's "Open questions for project owner" section (4 items: fingerprint-default, CI gate on drift, DB-sink package boundary, anonymisation tool).

@@ -10,19 +10,24 @@ This repository will contain a .NET NuGet package integrating with [Polar.sh](ht
 
 Before doing any work, read these files in order:
 
-**Project-rooted (in this repo at `/Users/mollsandhersh/Repos/Polar.sh_Nuget/`):**
+**Project-rooted (all in this repo at `/Users/mollsandhersh/Repos/Polar.sh_Nuget/`):**
 
 0. **`LARGE-PROJECT-BEST-PRACTICES.md`** ⭐ READ FIRST — the methodology white paper. Codifies patterns, anti-patterns (the Trap Catalog), tool decision trees, agentic-AI-specific protocols, and reusable templates developed during the 2026-05-19 architecture session. Contains the Quick-Reference Card at the top (Top 10 patterns + Top 10 anti-patterns) for fast cold-start scanning. Mandatory reading for both human contributors AND agentic AI sessions.
+1. `PLAN.md` — active technical plan
+2. `TASKS.md` — current task list
+3. `PROGRESS.md` — completed work log
+4. `DECISIONS.md` — locked architecture decisions
+5. The 5 Architectural Case Studies in `Case Studies/` (see list below)
 
-**From the home directory `/Users/mollsandhersh/`:**
+**Home-rooted (in `/Users/mollsandhersh/`; universal across all Claude projects):**
 
-1. `AGENTS.md` — workflow rules, agentic-master policy, RAG policy
-2. `PLAN.md` — active technical plan
-3. `TASKS.md` — current task list
-4. `PROGRESS.md` — completed work log
-5. `DECISIONS.md` — locked architecture decisions
-6. `ZoranHorvat.md` — required for all .NET/C#/NuGet work in this repo
-7. The 5 Architectural Case Studies in `Case Studies/`:
+6. `AGENTS.md` — workflow rules, agentic-master policy, RAG policy (applies across all Claude projects)
+7. `ZoranHorvat.md` — required for all .NET/C#/NuGet work (applies across all .NET projects)
+
+**Location note (clarified 2026-05-19):** Items 1–4 used to live in the home directory `/Users/mollsandhersh/` alongside AGENTS.md + ZoranHorvat.md. That was a single-project-era design that didn't scale to multiple Claude projects on the same machine — multiple projects following the same home-level CLAUDE.md instruction would have collided on shared planning files. The 4 files were moved into the project folder on 2026-05-19 so each Claude project on this machine has its own PLAN/TASKS/PROGRESS/DECISIONS without cross-project pollution. Items 6 + 7 stay home-rooted because they apply universally across projects.
+
+**The 5 Architectural Case Studies in `Case Studies/`:**
+
    - `01-Lift-And-Shift-Architecture.md` — visible namespace separator + CI dependency guard pattern for monorepo features designed for eventual extraction
    - `02-Event-Sourced-Wallet-With-Economic-Modeling.md` — wallet design + economic transparency + Polar.sh as the SaaS-tenant on-ramp
    - `03-Embed-Anywhere-Web-Components.md` — Stencil + Shadow DOM + 11-layer server-as-source-of-truth fraud prevention for embeddable widgets

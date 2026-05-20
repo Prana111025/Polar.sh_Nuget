@@ -38,17 +38,33 @@
 
 ### Critical cold-start artifacts (read before any non-trivial work)
 
+**Project-rooted (in `/Users/mollsandhersh/Repos/Polar.sh_Nuget/`):**
+
 | Artifact | Why |
 |---|---|
-| `/Users/mollsandhersh/CLAUDE.md` | Home standing requirements (agentic-master policy, RAG policy) |
-| `/Users/mollsandhersh/Repos/Polar.sh_Nuget/CLAUDE.md` | Project standing requirements (build commands, doc standards, framing rules) |
+| `CLAUDE.md` | Project standing requirements (build commands, doc standards, framing rules) |
 | `LARGE-PROJECT-BEST-PRACTICES.md` (this doc) | Methodology |
-| `/Users/mollsandhersh/PLAN.md` | Current technical plan (active sprint + upcoming sprints + future strategy) |
-| `/Users/mollsandhersh/TASKS.md` | Current tasks |
-| `/Users/mollsandhersh/PROGRESS.md` | Completed work log |
-| `/Users/mollsandhersh/DECISIONS.md` | Locked architectural decisions |
+| `PLAN.md` | Current technical plan (active sprint + upcoming sprints + future strategy) |
+| `TASKS.md` | Current tasks |
+| `PROGRESS.md` | Completed work log |
+| `DECISIONS.md` | Locked architectural decisions |
 | `Case Studies/*.md` | Five canonical architectural patterns |
-| `.claude/projects/{project}/memory/MEMORY.md` | Memory index → individual behavioral/project notes |
+
+**Home-rooted (in `/Users/mollsandhersh/`; universal across all Claude projects):**
+
+| Artifact | Why |
+|---|---|
+| `CLAUDE.md` | Home standing requirements (agentic-master policy, RAG policy) |
+| `AGENTS.md` | Cross-project workflow rules + agentic-master policy + RAG policy |
+| `ZoranHorvat.md` | Cross-project .NET / C# / Blazor / Telerik / ServiceStack coding standards |
+
+**Per-project (in `.claude/projects/{project-hash}/memory/`):**
+
+| Artifact | Why |
+|---|---|
+| `MEMORY.md` | Memory index → individual behavioral/project memory notes |
+
+**Location migration note (2026-05-19):** PLAN.md / TASKS.md / PROGRESS.md / DECISIONS.md were previously located at home-directory paths (e.g. `/Users/mollsandhersh/PLAN.md`); they were moved into the project folder so multiple Claude projects on the same machine don't collide on shared planning files. Memory notes + this doc + project CLAUDE.md were all updated for this layout. Older sessions / external references that still expect the home-directory paths will need to be updated.
 
 ---
 
@@ -789,17 +805,18 @@ See "Audit-before-building pattern" section above for the full template structur
 
 ### Cold-start checklist (read in this order before starting any non-trivial work)
 
-1. **`/Users/mollsandhersh/CLAUDE.md`** — home-level standing requirements (agentic-master policy, RAG policy)
+1. **`/Users/mollsandhersh/CLAUDE.md`** — home-level standing requirements (agentic-master policy, RAG policy; applies to all Claude projects)
 2. **`/Users/mollsandhersh/Repos/Polar.sh_Nuget/CLAUDE.md`** — this project's standing requirements (build commands, doc standards, framing rules)
-3. **`/Users/mollsandhersh/Repos/Polar.sh_Nuget/LARGE-PROJECT-BEST-PRACTICES.md`** — this document
-4. **`/Users/mollsandhersh/PLAN.md`** — current technical plan (active sprint + upcoming sprints + future strategy)
-5. **`/Users/mollsandhersh/TASKS.md`** — current tasks (work items being tracked)
-6. **`/Users/mollsandhersh/PROGRESS.md`** — completed work log
-7. **`/Users/mollsandhersh/DECISIONS.md`** — locked architectural decisions
-8. **`/Users/mollsandhersh/ZoranHorvat.md`** — .NET/C#/NuGet coding standards (required for all .NET work)
-9. **Case Studies** (`Case Studies/01-*.md` through `05-*.md`) — five canonical architectural patterns referenced throughout the codebase
-10. **`.claude/projects/{project}/memory/MEMORY.md`** — memory index (lists all memory notes)
-11. **Session-specific memory notes** — read the ones whose descriptions match your current task
+3. **`/Users/mollsandhersh/Repos/Polar.sh_Nuget/LARGE-PROJECT-BEST-PRACTICES.md`** — this document (methodology)
+4. **`/Users/mollsandhersh/Repos/Polar.sh_Nuget/PLAN.md`** — current technical plan (project-rooted as of 2026-05-19)
+5. **`/Users/mollsandhersh/Repos/Polar.sh_Nuget/TASKS.md`** — current tasks (project-rooted as of 2026-05-19)
+6. **`/Users/mollsandhersh/Repos/Polar.sh_Nuget/PROGRESS.md`** — completed work log (project-rooted as of 2026-05-19)
+7. **`/Users/mollsandhersh/Repos/Polar.sh_Nuget/DECISIONS.md`** — locked architectural decisions (project-rooted as of 2026-05-19)
+8. **`/Users/mollsandhersh/AGENTS.md`** — universal cross-project workflow rules (home-rooted; applies across all Claude projects)
+9. **`/Users/mollsandhersh/ZoranHorvat.md`** — .NET/C#/NuGet coding standards (home-rooted; applies across all .NET projects)
+10. **Case Studies** (`Case Studies/01-*.md` through `05-*.md`) — five canonical architectural patterns referenced throughout the codebase
+11. **`.claude/projects/{project-hash}/memory/MEMORY.md`** — memory index (lists all memory notes)
+12. **Session-specific memory notes** — read the ones whose descriptions match your current task
 
 ### Per-session decision protocol
 
