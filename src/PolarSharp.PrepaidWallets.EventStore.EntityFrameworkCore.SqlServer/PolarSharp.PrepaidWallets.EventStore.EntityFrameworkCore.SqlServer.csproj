@@ -4,6 +4,8 @@
     <IsLibrary>true</IsLibrary>
     <PackageId>PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore.SqlServer</PackageId>
     <Version>1.0.0</Version>
+    <!-- Marked IsPackable=false 2026-05-20: package body is a scaffold per its XML doc deferral marker (real implementation lands in a follow-up phase). Flip back to true when the implementation lands so the empty assembly never reaches NuGet. -->
+    <IsPackable>false</IsPackable>
     <Authors>Molls and Hersh, LLC</Authors>
     <Description>SQL Server provider for the prepaid-wallet event store.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

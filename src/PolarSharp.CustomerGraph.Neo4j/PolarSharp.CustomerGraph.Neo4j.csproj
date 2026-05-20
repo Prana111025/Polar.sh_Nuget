@@ -4,6 +4,8 @@
     <IsLibrary>true</IsLibrary>
     <PackageId>PolarSharp.CustomerGraph.Neo4j</PackageId>
     <Version>1.0.0</Version>
+    <!-- Marked IsPackable=false 2026-05-20: package body is a scaffold per its XML doc deferral marker (real implementation lands in a follow-up phase). Flip back to true when the implementation lands so the empty assembly never reaches NuGet. -->
+    <IsPackable>false</IsPackable>
     <Authors>Molls and Hersh, LLC</Authors>
     <Description>Neo4j provider for PolarSharp.CustomerGraph — per-tenant DATABASE on Neo4j Enterprise; label-based isolation on Community.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
