@@ -28,10 +28,10 @@ public sealed class PolarClientReportingApiProductsIntegrationTests
         return new PolarClientReportingApi(polar, NullLogger<PolarClientReportingApi>.Instance);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task FetchProducts_against_live_sandbox_returns_typed_Success()
     {
-        if (string.IsNullOrEmpty(Token)) return;
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
         var result = await api.FetchProductsSinceAsync(sinceId: null, pageSize: 10, CancellationToken.None);
@@ -56,10 +56,10 @@ public sealed class PolarClientReportingApiProductsIntegrationTests
             onFailure: err => throw new Xunit.Sdk.XunitException($"Unexpected failure: {err.Kind} — {err.Message}"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task FetchProducts_with_unknown_sinceId_returns_full_page_unfiltered()
     {
-        if (string.IsNullOrEmpty(Token)) return;
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
         // A non-existent (but well-formed) sinceId. The wrapper should still return all rows

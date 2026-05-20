@@ -20,6 +20,8 @@
     </PackageReference>
     <PackageReference Include="Verify.Xunit" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <!-- SkippableFact so live-Polar-sandbox tests report as Skipped (not silently Passed) when POLAR_SANDBOX_TOKEN is unset. See TESTING.md § "Layer 2". -->
+    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>

@@ -25,10 +25,10 @@ public sealed class SnapshotIdempotencyIntegrationTests
 {
     private static string? Token => Environment.GetEnvironmentVariable("POLAR_SANDBOX_TOKEN");
 
-    [Fact]
+    [SkippableFact]
     public async Task RunSnapshot_against_live_sandbox_is_idempotent_on_second_invocation()
     {
-        if (string.IsNullOrEmpty(Token)) return;
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         await using var ctx = await ReportingTestContext.CreateAsync(configureServices: ConfigureLivePolar);
 

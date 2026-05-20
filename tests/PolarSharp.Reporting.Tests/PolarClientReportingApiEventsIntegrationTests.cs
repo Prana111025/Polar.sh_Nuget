@@ -28,10 +28,10 @@ public sealed class PolarClientReportingApiEventsIntegrationTests
         return new PolarClientReportingApi(polar, NullLogger<PolarClientReportingApi>.Instance);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task FetchEvents_against_live_sandbox_returns_typed_Success()
     {
-        if (string.IsNullOrEmpty(Token)) return;
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
         var result = await api.FetchEventsSinceAsync(sinceId: null, pageSize: 10, CancellationToken.None);
@@ -54,10 +54,10 @@ public sealed class PolarClientReportingApiEventsIntegrationTests
             onFailure: err => throw new Xunit.Sdk.XunitException($"Unexpected failure: {err.Kind} — {err.Message}"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task FetchEvents_with_unknown_sinceId_returns_full_page_unfiltered()
     {
-        if (string.IsNullOrEmpty(Token)) return;
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
         var bogusCursor = Guid.NewGuid().ToString();

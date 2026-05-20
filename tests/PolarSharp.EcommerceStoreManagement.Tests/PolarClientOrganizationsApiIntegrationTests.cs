@@ -29,10 +29,10 @@ public sealed class PolarClientOrganizationsApiIntegrationTests
         return new PolarClientOrganizationsApi(polar, NullLogger<PolarClientOrganizationsApi>.Instance);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetAsync_against_real_sandbox_org_returns_id_and_account_fields()
     {
-        if (string.IsNullOrEmpty(Token)) return;     // sandbox token not provided — silently skip
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
         var result = await api.GetAsync(SandboxOrgId, CancellationToken.None);
@@ -55,10 +55,10 @@ public sealed class PolarClientOrganizationsApiIntegrationTests
             onFailure: err => throw new Xunit.Sdk.XunitException($"Unexpected failure: {err.Kind} — {err.Message}"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetAsync_against_unknown_org_id_returns_typed_NotFound_not_exception()
     {
-        if (string.IsNullOrEmpty(Token)) return;
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
         // Fresh v4 UUID — not the real org id, not malformed (avoids 422), just non-existent (404).
@@ -80,10 +80,10 @@ public sealed class PolarClientOrganizationsApiIntegrationTests
             });
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task UpdateAsync_against_unknown_org_id_returns_typed_failure_not_exception()
     {
-        if (string.IsNullOrEmpty(Token)) return;
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
         // Deliberately PATCH a non-existent org so the live test never mutates the real

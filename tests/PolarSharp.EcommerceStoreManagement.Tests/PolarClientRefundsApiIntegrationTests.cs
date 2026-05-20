@@ -39,10 +39,10 @@ public sealed class PolarClientRefundsApiIntegrationTests
         return new PolarClientRefundsApi(polar, NullLogger<PolarClientRefundsApi>.Instance);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListRefundsForOrder_returns_success_when_no_refunds_match()
     {
-        if (string.IsNullOrEmpty(Token)) return;     // sandbox token not provided — silently skip
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
 
@@ -57,10 +57,10 @@ public sealed class PolarClientRefundsApiIntegrationTests
             onFailure: err => throw new Xunit.Sdk.XunitException($"Unexpected failure: {err.Kind} — {err.Message}"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateRefund_against_unknown_order_returns_typed_error_not_exception()
     {
-        if (string.IsNullOrEmpty(Token)) return;     // sandbox token not provided — silently skip
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
 

@@ -29,10 +29,10 @@ public sealed class PolarClientLicenseKeysApiIntegrationTests
         return new PolarClientLicenseKeysApi(polar, NullLogger<PolarClientLicenseKeysApi>.Instance);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Validate_against_unknown_key_returns_typed_NotFound_not_exception()
     {
-        if (string.IsNullOrEmpty(Token)) return;     // sandbox token not provided — silently skip
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
 
@@ -62,10 +62,10 @@ public sealed class PolarClientLicenseKeysApiIntegrationTests
             });
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Validate_against_malformed_organization_id_returns_typed_failure_not_exception()
     {
-        if (string.IsNullOrEmpty(Token)) return;     // sandbox token not provided — silently skip
+        Skip.If(string.IsNullOrEmpty(Token), "POLAR_SANDBOX_TOKEN not set — skipping live Polar sandbox test");
 
         var api = BuildApi();
 
