@@ -15,6 +15,12 @@
   -->
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Required for the RestSharp transitive override below to actually take effect.
+         Without this flag, <PackageVersion> entries in CPM only bind direct references;
+         transitives resolve to whatever version their parent declared. With this flag,
+         every <PackageVersion> in this file acts as the authoritative pin for both
+         direct and transitive references. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
     <!-- Kiota runtime -->
@@ -121,5 +127,14 @@
     <PackageVersion Include="Shippo" Version="4.0.2" />
     <PackageVersion Include="EasyPost-Official" Version="7.7.3" />
     <PackageVersion Include="TaxJar" Version="4.0.0" />
+    <!-- Transitive override: TaxJar 4.0.0 declares RestSharp >= 108.0.3 as a floor,
+         but RestSharp 108.0.3 carries advisory GHSA-4rr6-2v9v-wcpc (CRLF injection in
+         RestRequest.AddHeader, affecting < 112.0.0). Pinning RestSharp to 114.0.0
+         (current stable) satisfies TaxJar's constraint and lifts the codebase out of
+         the vulnerable range — closing the CI "Vulnerability scan" gate. Safe because
+         PolarSharp.EcommerceStorefronts.Tax.TaxJar is IsPackable=false with zero
+         hand-written source files; nothing in the build actually calls TaxJar's API
+         yet. Re-evaluate this pin when v1.4.0's TaxJar integration lands. -->
+    <PackageVersion Include="RestSharp" Version="114.0.0" />
   </ItemGroup>
 </Project>
