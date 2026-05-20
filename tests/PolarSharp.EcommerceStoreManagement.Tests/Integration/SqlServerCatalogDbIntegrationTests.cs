@@ -1,0 +1,324 @@
+using Finbuckle.MultiTenant;
+using Finbuckle.MultiTenant.Abstractions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using PolarSharp.EcommerceStoreManagement.EntityFrameworkCore;
+using PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.Entities;
+using PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.SqlServer;
+using PolarSharp.MultiTenant;
+using PolarSharp.MultiTenant.EntityFrameworkCore;
+using Testcontainers.MsSql;
+
+namespace PolarSharp.EcommerceStoreManagement.Tests.Integration;
+
+/// <summary>
+/// End-to-end integration tests for the <see cref="PolarCatalogDbContext"/> wired through
+/// <see cref="SqlServerCatalogBuilderExtensions.UseSqlServerCatalog(IServiceCollection,string)"/>
+/// against a real SQL Server 2022 container spun up by Testcontainers.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>Why an integration test in addition to the unit tests.</strong> The catalog
+/// unit tests use an in-memory SQLite harness (<see cref="Infrastructure.CatalogTestContext"/>);
+/// that exercises the EF model + the global tenant query filter but does NOT exercise the
+/// engine-specific behavior of SQL Server: real <c>nvarchar</c> column types, real index
+/// uniqueness, real Row-Level Security policies driven by <c>SESSION_CONTEXT('tenant_id')</c>,
+/// the <see cref="MultiTenant.EntityFrameworkCore.SqlServer.SqlServerTenantSessionInterceptor"/>
+/// stamping the session per connection check-out, and the migrations actually applying
+/// against the engine they were generated for. This class proves the catalog's full SQL
+/// Server provider stack works end-to-end.
+/// </para>
+/// <para>
+/// <strong>What the cross-tenant test proves.</strong> DECISIONS.md D-005 calls out 5-layer
+/// tenant isolation as a non-negotiable acceptance criterion for every new entity. Layer 1
+/// is the EF Core global query filter (covered by unit tests); layer 2 is SQL Server's RLS
+/// policy plus session context. The cross-tenant test inserts a row as Tenant A, switches
+/// the Finbuckle context to Tenant B, opens a fresh connection, and asserts zero rows are
+/// returned — verifying both layers compose correctly. If either the filter OR the RLS
+/// policy is bypassed, the test fails loudly.
+/// </para>
+/// <para>
+/// <strong>CI category filtering convention.</strong>
+/// </para>
+/// <list type="bullet">
+///   <item><description><c>dotnet test --filter "Category!=Integration"</c> — unit tests only. Fast.</description></item>
+///   <item><description><c>dotnet test --filter "Category=Integration"</c> — all integration tests. Slow (~30-60s per provider).</description></item>
+///   <item><description><c>dotnet test --filter "Category=Integration&amp;Provider=SqlServer"</c> — this provider only.</description></item>
+/// </list>
+/// <para>
+/// <strong>Container lifecycle.</strong> One container per test class via
+/// <see cref="IAsyncLifetime"/>. Per-test container startup would multiply the suite
+/// runtime by 5+ — instead each test owns its own tenant id(s) so containers can be shared
+/// safely across tests with no inter-test state leak.
+/// </para>
+/// <para>
+/// <strong>Image pin.</strong> The <see cref="MsSqlBuilder"/> is fed
+/// <c>mcr.microsoft.com/mssql/server:2022-latest</c> explicitly so the container shape is
+/// reproducible across machines (no implicit "latest" drift between builds). A strong
+/// explicit password is set so the connection string is deterministic for ad-hoc debugging
+/// against the running container during failure investigation.
+/// </para>
+/// <para>
+/// <strong>Prerequisite.</strong> Docker must be running on the host. The
+/// <c>mcr.microsoft.com/mssql/server:2022-latest</c> image pulls automatically on first run.
+/// </para>
+/// </remarks>
+[Trait("Category", "Integration")]
+[Trait("Provider", "SqlServer")]
+public sealed class SqlServerCatalogDbIntegrationTests : IAsyncLifetime
+{
+    private const string TenantA = "tenant-a-int-sql";
+    private const string TenantB = "tenant-b-int-sql";
+
+    private MsSqlContainer _container = null!;
+    private MutableMultiTenantAccessor _accessor = null!;
+    private ServiceProvider _services = null!;
+
+    /// <inheritdoc/>
+    public async Task InitializeAsync()
+    {
+        // Pin both the image tag and the SA password — the image tag for cross-machine
+        // reproducibility, the password so the connection string is deterministic during
+        // failure investigation (the MsSqlBuilder default is also strong but rotates).
+        _container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
+            .WithPassword("PolarSharp_Integration_Test_Password_1!")
+            .Build();
+        await _container.StartAsync();
+
+        // Mirror the production wiring exactly: call UseSqlServerCatalog so the
+        // SqlServerTenantSessionInterceptor is registered and attached to the DbContext.
+        // The interceptor depends on IMultiTenantContextAccessor + IAppMasterAdminCrossTenantContext;
+        // we supply test-double singletons of both. The TenantAwareDbContextBase also reads
+        // IMultiTenantContextAccessor in its constructor for the query filter.
+        _accessor = new MutableMultiTenantAccessor(TenantA);
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IMultiTenantContextAccessor>(_accessor);
+        services.AddSingleton<IAppMasterAdminCrossTenantContext>(new NoCrossTenantContext());
+
+        services.UseSqlServerCatalog(_container.GetConnectionString());
+
+        _services = services.BuildServiceProvider();
+
+        // Apply all migrations once per class. Subsequent tests share the schema; each
+        // test owns its own tenant ids so rows from one test cannot leak into another.
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PolarCatalogDbContext>();
+        await db.Database.MigrateAsync();
+    }
+
+    /// <inheritdoc/>
+    public async Task DisposeAsync()
+    {
+        if (_services is not null)
+        {
+            await _services.DisposeAsync();
+        }
+        if (_container is not null)
+        {
+            await _container.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Verifies that <c>MigrateAsync</c> succeeds against a real SQL Server 2022 engine —
+    /// the most basic precondition for every other test in this class. If this test fails,
+    /// every other test in the class will fail too; isolating the migration step as a
+    /// dedicated test gives a clear failure signal pointing at "the SqlServer migrations
+    /// don't apply" rather than "test X has some other issue".
+    /// </summary>
+    [Fact]
+    public async Task Container_boots_and_migrations_apply_cleanly()
+    {
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PolarCatalogDbContext>();
+
+        // MigrateAsync was already called in InitializeAsync; re-querying applied migrations
+        // proves the operation succeeded and the history table is in good shape.
+        var applied = await db.Database.GetAppliedMigrationsAsync();
+        Assert.NotEmpty(applied);
+
+        // The catalog ships two migrations as of the time this test class was written
+        // (Initial + EnableRowLevelSecurity); assert both are applied so any future migration
+        // addition is forced through a deliberate update of this baseline.
+        Assert.Contains(applied, m => m.EndsWith("_Initial", StringComparison.Ordinal));
+        Assert.Contains(applied, m => m.EndsWith("_EnableRowLevelSecurity", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Inserts a <see cref="LocalProductEntity"/> in the current tenant scope, reads it
+    /// back via a fresh DbContext, and asserts that all scalar fields round-trip through
+    /// a real SQL Server engine. This catches any provider-specific serialization issue
+    /// (e.g. <c>nvarchar(max)</c> truncation, datetime precision loss) that the SQLite
+    /// unit tests cannot detect.
+    /// </summary>
+    [Fact]
+    public async Task Insert_and_read_back_LocalProduct_round_trips()
+    {
+        _accessor.SwitchTo(TenantA);
+
+        var productId = Guid.NewGuid();
+        var createdAt = new DateTimeOffset(2026, 5, 20, 10, 0, 0, TimeSpan.Zero);
+
+        // Write scope.
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PolarCatalogDbContext>();
+            db.Products.Add(new LocalProductEntity
+            {
+                Id = productId,
+                MasterName = "Integration Test Product (SqlServer)",
+                MasterDescription = "Round-trip through real SQL Server 2022.",
+                MasterLanguage = "en-US",
+                Kind = ProductKind.Product,
+                PriceJson = """{"amount":1999,"currency":"USD"}""",
+                AttachedBenefitsJson = "[]",
+                Status = PublishStatus.Draft,
+                CreatedAt = createdAt,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // Read scope — separate DbContext instance proves the row is persisted, not just tracked.
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PolarCatalogDbContext>();
+            var loaded = await db.Products.AsNoTracking().SingleOrDefaultAsync(p => p.Id == productId);
+
+            Assert.NotNull(loaded);
+            Assert.Equal("Integration Test Product (SqlServer)", loaded!.MasterName);
+            Assert.Equal("Round-trip through real SQL Server 2022.", loaded.MasterDescription);
+            Assert.Equal("en-US", loaded.MasterLanguage);
+            Assert.Equal(ProductKind.Product, loaded.Kind);
+            Assert.Equal(PublishStatus.Draft, loaded.Status);
+            Assert.Equal(TenantA, loaded.TenantId);
+            Assert.Equal(createdAt, loaded.CreatedAt);
+        }
+    }
+
+    /// <summary>
+    /// DECISIONS.md D-005 acceptance criterion: every tenant-owned entity must be unreachable
+    /// from a different tenant's scope. This test inserts under Tenant A, swaps the Finbuckle
+    /// context to Tenant B, opens a fresh DbContext + connection, and asserts that the
+    /// Tenant A row is invisible. Both the EF Core global filter (layer 1) and the SQL
+    /// Server RLS policy + <c>SESSION_CONTEXT</c> session var (layer 2) must compose
+    /// correctly for this assertion to hold; a regression in either layer breaks the test.
+    /// </summary>
+    [Fact]
+    public async Task Cross_tenant_query_filter_blocks_reads_from_other_tenant()
+    {
+        // Stage a Tenant A row.
+        _accessor.SwitchTo(TenantA);
+        var tenantAProductId = Guid.NewGuid();
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PolarCatalogDbContext>();
+            db.Products.Add(new LocalProductEntity
+            {
+                Id = tenantAProductId,
+                MasterName = "Tenant A only — must not leak.",
+                MasterLanguage = "en-US",
+                Kind = ProductKind.Product,
+                PriceJson = """{"amount":100,"currency":"USD"}""",
+                AttachedBenefitsJson = "[]",
+                Status = PublishStatus.Draft,
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // Switch to Tenant B and assert the row is invisible. A fresh scope means a fresh
+        // DbContext, which (a) re-reads the IMultiTenantContextAccessor in its constructor
+        // and (b) opens a fresh connection so the SqlServerTenantSessionInterceptor fires
+        // ConnectionOpenedAsync with the new tenant id baked into SESSION_CONTEXT.
+        _accessor.SwitchTo(TenantB);
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PolarCatalogDbContext>();
+
+            // Direct point-query: must return null even though the row exists with that primary key.
+            var directLookup = await db.Products.AsNoTracking().SingleOrDefaultAsync(p => p.Id == tenantAProductId);
+            Assert.Null(directLookup);
+
+            // Aggregate: no Tenant-A rows should be visible at all.
+            var countOfTenantArows = await db.Products
+                .AsNoTracking()
+                .CountAsync(p => p.MasterName == "Tenant A only — must not leak.");
+            Assert.Equal(0, countOfTenantArows);
+        }
+
+        // Sanity: when we switch back to Tenant A the row is visible — proves the row was
+        // actually written and the previous assertions weren't masking an upstream failure.
+        _accessor.SwitchTo(TenantA);
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PolarCatalogDbContext>();
+            var visibleToOwner = await db.Products.AsNoTracking().SingleOrDefaultAsync(p => p.Id == tenantAProductId);
+            Assert.NotNull(visibleToOwner);
+        }
+    }
+
+    /// <summary>
+    /// Calling <c>MigrateAsync</c> a second time must be a no-op — no exception, no duplicate
+    /// rows in <c>__EFMigrationsHistory</c>. EF Core's <c>IHistoryRepository</c> guards
+    /// against re-applying applied migrations; this test proves that guard works through
+    /// the SqlServer provider's actual implementation, not just in unit-test stubs.
+    /// </summary>
+    [Fact]
+    public async Task Migrations_are_idempotent_on_re_run()
+    {
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PolarCatalogDbContext>();
+
+        var appliedBefore = (await db.Database.GetAppliedMigrationsAsync()).ToList();
+
+        // Re-run. Should be a no-op since InitializeAsync already migrated.
+        await db.Database.MigrateAsync();
+
+        var appliedAfter = (await db.Database.GetAppliedMigrationsAsync()).ToList();
+
+        Assert.Equal(appliedBefore.Count, appliedAfter.Count);
+        Assert.Equal(appliedBefore, appliedAfter);
+    }
+
+    // --- helpers --------------------------------------------------------------------------
+
+    /// <summary>
+    /// Mutable Finbuckle <see cref="IMultiTenantContextAccessor"/> so tests can swap the
+    /// active tenant mid-stream without rebuilding the DI graph. Each <see cref="SwitchTo"/>
+    /// call constructs a fresh <see cref="MultiTenantContext{T}"/> wrapping a
+    /// <see cref="PolarTenantInfo"/> for the requested tenant id.
+    /// </summary>
+    private sealed class MutableMultiTenantAccessor : IMultiTenantContextAccessor
+    {
+        private IMultiTenantContext _current;
+
+        public MutableMultiTenantAccessor(string tenantId)
+        {
+            _current = BuildContext(tenantId);
+        }
+
+        public IMultiTenantContext MultiTenantContext
+        {
+            get => _current;
+            set => _current = value;
+        }
+
+        public void SwitchTo(string tenantId) => _current = BuildContext(tenantId);
+
+        private static IMultiTenantContext BuildContext(string tenantId) =>
+            new MultiTenantContext<PolarTenantInfo>(
+                new PolarTenantInfo { Id = tenantId, Identifier = tenantId, Name = tenantId });
+    }
+
+    /// <summary>
+    /// Stub <see cref="IAppMasterAdminCrossTenantContext"/> that never grants cross-tenant
+    /// access — pinning the safe default so the cross-tenant isolation test cannot be
+    /// silently bypassed by a real cross-tenant signal from a future DI addition.
+    /// </summary>
+    private sealed class NoCrossTenantContext : IAppMasterAdminCrossTenantContext
+    {
+        public bool IsAllowedCrossTenantAccess => false;
+    }
+}

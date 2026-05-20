@@ -22,6 +22,11 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <!-- SkippableFact so live-Polar-sandbox tests report as Skipped (not silently Passed) when POLAR_SANDBOX_TOKEN is unset. See TESTING.md § "Layer 2". -->
     <PackageReference Include="Xunit.SkippableFact" />
+    <!-- Testcontainers for end-to-end provider integration tests under Integration/. Versions managed by Directory.Packages.props. -->
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.MariaDb" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,6 +37,10 @@
     <ProjectReference Include="..\..\src\PolarSharp.EcommerceStoreManagement\PolarSharp.EcommerceStoreManagement.csproj" />
     <ProjectReference Include="..\..\src\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.csproj" />
     <ProjectReference Include="..\..\src\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.Sqlite\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.Sqlite.csproj" />
+    <!-- Provider packages exercised by Integration/ tests against real Testcontainers-backed engines. -->
+    <ProjectReference Include="..\..\src\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.SqlServer\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.PostgreSQL\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.PostgreSQL.csproj" />
+    <ProjectReference Include="..\..\src\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.MariaDb\PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.MariaDb.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
 
