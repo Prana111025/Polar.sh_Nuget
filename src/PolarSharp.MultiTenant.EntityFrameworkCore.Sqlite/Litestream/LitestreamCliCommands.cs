@@ -5,8 +5,8 @@ namespace PolarSharp.MultiTenant.EntityFrameworkCore.Sqlite.Litestream;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The CLI surface is scaffolded in Stage C but the command bodies are deferred to a
-/// follow-up release (v1.2.x.+1). Discovery + dispatch (e.g. via
+/// The CLI surface is scaffolded in Stage C but the command bodies are deferred to
+/// <c>TASK-V20-017</c> (Litestream CLI implementation). Discovery + dispatch (e.g. via
 /// <c>System.CommandLine</c>) is out of scope for the Stage C deliverable; these
 /// methods define the intended shape and contract so the follow-up release lands as
 /// pure implementation rather than design.
@@ -45,7 +45,7 @@ public sealed class LitestreamCliCommands
     /// <param name="options">The resolved Litestream options.</param>
     /// <param name="outputPath">Destination path for the generated YAML.</param>
     /// <returns>Exit code (0 on success, non-zero on failure).</returns>
-    /// <exception cref="NotImplementedException">Always. Deferred to release v1.2.x.+1.</exception>
+    /// <exception cref="NotImplementedException">Always. Tracked as TASK-V20-017; see TASKS.md.</exception>
     public int Init(string databaseDirectory, LitestreamOptions options, string outputPath)
     {
         ArgumentException.ThrowIfNullOrEmpty(databaseDirectory);
@@ -58,7 +58,7 @@ public sealed class LitestreamCliCommands
         _ = _generator;
 
         throw new NotImplementedException(
-            "Phase v1.2.x.+1 deferred — Stage C scaffolds the CLI shape only. " +
+            "TASK-V20-017 deferred — Stage C scaffolds the CLI shape only. " +
             "Full discovery + dispatch (via System.CommandLine) lands in the follow-up release.");
     }
 
@@ -70,14 +70,14 @@ public sealed class LitestreamCliCommands
     /// <param name="options">The resolved Litestream options.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Exit code (0 when every replica restores and verifies clean; non-zero otherwise).</returns>
-    /// <exception cref="NotImplementedException">Always. Deferred to release v1.2.x.+1.</exception>
+    /// <exception cref="NotImplementedException">Always. Tracked as TASK-V20-017; see TASKS.md.</exception>
     public Task<int> VerifyAsync(string databaseDirectory, LitestreamOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(databaseDirectory);
         ArgumentNullException.ThrowIfNull(options);
 
         throw new NotImplementedException(
-            "Phase v1.2.x.+1 deferred — Stage C scaffolds the CLI shape only. " +
+            "TASK-V20-017 deferred — Stage C scaffolds the CLI shape only. " +
             "Full restore-and-verify smoke test lands in the follow-up release.");
     }
 }
