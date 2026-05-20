@@ -67,5 +67,11 @@
       href: narratives/choosing-your-polarsharp-di-wiring.md
     - name: Cart and checkout, in plain language
       href: narratives/storefronts-cart-and-checkout-for-customers.md
+    - name: Picking the right database for your PolarSharp app
+      href: narratives/picking-the-right-database.md
+    - name: Tracking where your customers shop from
+      href: narratives/tracking-where-your-customers-shop-from.md
+    - name: Seeing which customers are connected
+      href: narratives/seeing-which-customers-are-connected.md
 - name: Disclaimer
   href: disclaimer.md

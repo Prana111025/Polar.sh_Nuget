@@ -28,6 +28,16 @@ Narratives that walk through how the pieces fit together when you wire PolarShar
 - [**Choosing your PolarSharp DI wiring**](choosing-your-polarsharp-di-wiring.md) — the three most common deployment shapes (minimum, middle, and full) laid out side by side, with a plain-language explanation of why multiple PolarSharp packages can all "register MediatR" without conflicting and what actually happens when you install a package but forget to wire it up. The narrative everyone reading their startup file for the first time wishes existed.
 - [**Cart and checkout, in plain language**](storefronts-cart-and-checkout-for-customers.md) — what actually happens when a customer adds something to their cart, applies a discount, types in their address, and hits "Pay". Covers the server-as-source-of-truth fraud-prevention discipline, the in-page progress streaming as each checkout stage runs, and the small set of "things to know" gotchas every storefront operator should be aware of.
 
+- [**Picking the right database for your PolarSharp app**](picking-the-right-database.md) — five database engines, one Postgres-native event-store option, and the trade-offs in plain language. Covers SQLite (the "just works on one machine" choice), PostgreSQL (the open-source serious option), SQL Server (the Microsoft-stack option), MariaDB / MySQL (the LAMP-shop option), and Azure Cosmos DB (the Azure-native document-store option), plus when Marten is the right Postgres-only choice for the prepaid wallet.
+
+## Knowing your customers
+
+Narratives that cover the optional, opt-in subsystems PolarSharp ships for understanding customer behaviour and catching fraud.
+
+- [**Tracking where your customers shop from**](tracking-where-your-customers-shop-from.md) — the three IP-capture modes (off, hashed, raw), how PolarSharp gets the customer's true IP when your application is behind a CDN or load balancer, how the jurisdictional advisory works, and which fraud-detection features depend on IP capture being on.
+
+- [**Seeing which customers are connected**](seeing-which-customers-are-connected.md) — the customer-graph subsystem and when to reach for it. Covers what kinds of questions belong in a graph database vs. a regular database, the three audience tiers (SaaSAdmin, Tenant, Customer), how the graph stays current via the projector, and the Neo4j provider's two isolation modes (per-tenant database on Enterprise, label-based on Community).
+
 ## Coming soon
 
 This section is brand-new. We're populating it as we build out the `PolarSharp.UI.Components` package and the flagship `PolarSaasDemo` reference application. Expect the first narratives to land alongside v1.4.0, covering:

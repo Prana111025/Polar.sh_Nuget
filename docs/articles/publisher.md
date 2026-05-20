@@ -54,4 +54,4 @@ The concrete `IPolarPublishingApi` impl behind `PolarClientPublishingApi` is a d
 
 ## Known limitation — single SaveChanges
 
-`PublishAsync` currently commits all `PolarXxxId` mutations in one `SaveChangesAsync` at the end of the run. A process crash mid-loop loses the durable Polar-id mapping (Polar got the calls; the local DB doesn't know). Tracked for v2.0 as TASK-V20-008 — per-action transaction boundaries with optimistic-concurrency safeguards. Documented in [PRODUCTION-READINESS-ANALYSIS.md](../../PRODUCTION-READINESS-ANALYSIS.md).
+`PublishAsync` currently commits all `PolarXxxId` mutations in one `SaveChangesAsync` at the end of the run. A process crash mid-loop loses the durable Polar-id mapping (Polar got the calls; the local DB doesn't know). Tracked for v2.0 as TASK-V20-008 — per-action transaction boundaries with optimistic-concurrency safeguards. Documented in [PRODUCTION-READINESS-ANALYSIS.md](https://github.com/MollsAndHersh/Polar.sh_Nuget/blob/main/PRODUCTION-READINESS-ANALYSIS.md).
