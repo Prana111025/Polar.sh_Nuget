@@ -6,64 +6,41 @@ Use the Agile Planning Template from AGENTS.md. Keep only the active plan here. 
 
 ---
 
-## Active plan — PolarSharp v1.3.0: Missing Service Implementations
+## Active plan — PolarSharp v1.4.0 (in progress)
 
-**Status:** in progress (2026-05-13).
+**Status:** in progress (2026-05-20).
 **Repository:** Polar.sh_Nuget (path: `/Users/mollsandhersh/Repos/Polar.sh_Nuget`).
-**Working branch:** `main` (v1.2.1 already published).
+**Working branch:** `main` (v1.3.0 published; v1.4.0 changes accumulating under CHANGELOG `[Unreleased]`).
+**Build + test gate on `main`:** clean — 0 warnings, 0 errors; 1163 tests passing, 8 skipped (Cosmos emulator), 0 failed across 24 test projects.
 
-### Why this exists
+### What's already in `[Unreleased]` (landed on `main`)
 
-Discovered while planning the v1.4.0 test-app refresh (see "Future plan" below) that **about half the v1.2.0 service surface is interface-only** — the abstractions ship but no concrete implementation classes are in the libraries. Specifically these public interfaces have NO concrete implementation in v1.2.1:
+- **Phase 25 — Storefronts core services** (merged 2026-05-19): `DefaultStorefrontCartService` + `DefaultStorefrontCheckoutService` + `DefaultStorefrontCustomerService` + `GuestSessions` package with signed-cookie roundtrip + middleware. Idempotency cache, cart expiry, guest-cart promotion. 89 tests across two new test projects. DocFX article + Implementation Narrative. See `CHANGELOG.md [Unreleased]` and `TASKS.md TASK-V14-001`.
+- **Phase 20 — Wallet event store** (merged 2026-05-20 as PR #4): `PolarSharp.PrepaidWallets.Abstractions` + `PolarSharp.PrepaidWallets` core domain (aggregate, handlers, behaviors, in-memory stores) + EF Core / Marten event-store providers. Funding-source provenance (`FundingSourceKind` enum + `FundingSourceAllocation` array on debits) per the WTR coordination requirement (see D-003 in DECISIONS.md). Tenant_id indexes on EF migrations. 124 tests across 4 wallet test projects. DocFX article + Implementation Narrative. See `TASKS.md TASK-V14-002`. **CHANGELOG entry pending — see TASK-V14-004.**
 
-| Package | Interface |
-|---|---|
-| `PolarSharp.EcommerceStoreManagement` | `IRefundService`, `ILicenseKeyValidator`, `IPolarCatalogPublisher`, `IPolarBusinessProfileService`, `IInventoryUpdater`, `IPolarCatalogReader`, `ITranslationProviderResolver`, `ICatalogRepository`, `ITranslationRepository` |
-| `PolarSharp.EcommerceStoreManagement` (orchestrator-only) | `IPolarCatalogTranslator` — `NoOpCatalogTranslator` is the only shipped impl; the resolver-driven orchestrator that combines provider lookup + cache + repository does not exist |
-| `PolarSharp.Reporting` | `IReportSnapshotService` |
+### Next concrete actions (this sub-cycle)
 
-The 441 v1.2.0 tests pass because they cover the abstractions, validators, EF entities, and the implementations that DO exist (5 cloning services, `NoOpCatalogTranslator`, `SystemAuditLogActorProvider`, the two translation cache implementations, `EfPolarReportingClient`, the `PolarMigrationRunner` hosted service, all DbContexts + migrations). A consumer trying to use any of the missing interfaces today would have to supply their own implementation.
+1. **TASK-V14-004 — Land Phase 20 entry in `CHANGELOG.md [Unreleased]`** before any v1.4.0 tag. The wallet work is on `main` but isn't yet documented in the release-notes file.
+2. **TASK-V14-003 — Phase 26 pipeline stages**: replace the 17 log-and-pass-through skeletons in `PolarSharp.EcommerceStorefronts.Pipelines.{OrderProcessing,SubscriptionBilling,RefundProcessing}` with real implementations. `StorefrontScaffoldDiagnosticService` flags these at startup; closing them removes the last `LogLevel.Warning` from a clean-host boot. Scope, per-stage unit tests, and one end-to-end checkout pipeline test in TASKS.md.
+3. **Phase 22 (Wallet bridges)** + **Phase 22.5 (WTR framework)**: scheduled after Phase 26 stabilises. Phase 22.5 is the consumer of Phase 20's funding-source provenance; design captured in the WTR section below (unchanged).
+4. **Phase 23 (v1.4.0 doc sweep)** + **v1.4.0 tag**: release-artifact phase mirroring the v1.3.H pattern — refresh package READMEs, expand DocFX article coverage for the new packages (Storefronts subset still has gaps — see PROGRESS.md audit), update the CHANGELOG with both Phase 25 + Phase 20 + Phase 26 sections, version-bump the v1.4.0 family, tag + push.
 
-v1.3.0 closes this gap.
+The original v1.4.0 design content (test-app refresh, EcommerceStorefronts WebComponents catalog with ~85 components + theming + auth + distribution, Phase 1/2/3 sub-phase breakdown) is preserved verbatim further below in this PLAN.md under "## v1.4.0 — Test App Refresh + EcommerceStorefronts WebComponents". Don't relitigate those decisions; they're locked.
 
-### Scope — 8 sub-phases
+### Open audit findings (deferred to dedicated phases)
 
-Each sub-phase ends with a local commit via `agentic-master commit --manual`. **No push until the end of the v1.3.0 push** (matching the v1.2.0 workflow the project owner has approved).
+Surfaced by the 2026-05-20 audit pass; tracked here so they aren't lost:
 
-| Sub-phase | Adds | Approx LOC |
-|---|---|---|
-| **1.3.A** | `EfTranslationProviderResolver : ITranslationProviderResolver` — implements the documented 3-tier resolution (per-tenant → master → disabled). Decrypts per-tenant API keys via ASP.NET Core Data Protection. Reads `TenantBusinessProfileEntity` from `PolarCatalogDbContext` (global query filter scopes to current tenant). Falls through quietly on missing factory / decryption failure. | ~150 impl + ~250 tests |
-| **1.3.B** | `EfCatalogRepository : ICatalogRepository` + `EfTranslationRepository : ITranslationRepository` + `PolarCatalogReader : IPolarCatalogReader`. EF data access for products/variants/categories/etc. plus reassembly of localized reads with master-language fallback and cache integration. | ~600 |
-| **1.3.C** | `RefundService : IRefundService` + `LicenseKeyValidator : ILicenseKeyValidator`. Both wrap `PolarClient` calls. Adds short-window caching + grace-period support to license validator. Audit-log integration on refund. | ~450 |
-| **1.3.D** | `PolarBusinessProfileService : IPolarBusinessProfileService` + `InventoryUpdater : IInventoryUpdater`. Local persistence plus Polar Organization PATCH for writable fields plus poll-only `payout_account_id` mirroring. Inventory zero-boundary Channel-driven sync. | ~450 |
-| **1.3.E** | `PolarCatalogPublisher : IPolarCatalogPublisher`. The big one — local-to-Polar publish with variant + tier expansion, dependency-order resolution (benefits before products before discounts before checkout-links), persisted PolarProductId for idempotent re-publish, partial-failure resume from `PublishStatus.OutOfSync`. | ~1000 |
-| **1.3.F** | `ReportSnapshotService : IReportSnapshotService`. Paginated polling of `/v1/events/`, `/v1/orders/`, `/v1/subscriptions/`, `/v1/customers/` with checkpoint advance per tenant. Updates pre-aggregated columns (`OrderCount`, `LifetimeValue`, `LineItemCount`, `RefundedAmount`) used by the hierarchical drilldown grid. | ~600 |
-| **1.3.G** | `AddPolarEcommerce()` + `AddPolarReporting()` orchestrator extensions registering all the new implementations as scoped services with the right interface mappings. Also adds the `SaveChangesInterceptor` registration for the audit log. | ~250 |
-| **1.3.H** | Release artifacts: bump versions, write CHANGELOG `[1.3.0]` entry, refresh "stubbed" markers in DocFX articles + README, run full test suite, tag + push. | ~200 |
+- **CS1591 opt-outs in 35 packages** — `Directory.Build.props` mandates CS1591 as a build-error, but 35 packages (mostly the Storefronts family) suppress it via `<NoWarn>CS1591</NoWarn>`. Recommended approach: drop the suppression on one representative package (`PolarSharp.EcommerceStorefronts.AspNetCore`), add docs to satisfy the gate, propagate the recipe across the remaining 34 in a dedicated docs-sweep phase.
+- **65 src packages with no paired test project** — primarily Storefronts Polar bridges + Pipelines + Themes + SEO + Search + Shipping + Tax + WebComponents, all CustomerGraph + NaturalLanguageQuery packages, all EventStore EFC provider variants, both Marten reporting/onboarding bridges. Recommended approach: prioritize the Storefronts Polar bridges + Pipelines first since they're core to v1.4.0.
 
-Total scope: ~3900 LOC + tests. Multi-session work — likely 4–6 sessions at full speed.
+---
 
-### Honest deferrals that remain after v1.3.0
+## Recent releases — v1.3.0 (shipped 2026-05-13)
 
-Even when v1.3.0 ships, some Polar HTTP-wire concerns will be "best-effort, not sandbox-validated":
+v1.3.0 closed the v1.2.0 "interface-only" gap by shipping concrete implementations for `IRefundService`, `ILicenseKeyValidator`, `IPolarCatalogPublisher`, `IPolarBusinessProfileService`, `IInventoryUpdater`, `IPolarCatalogReader`, `ITranslationProviderResolver`, `ICatalogRepository`, `ITranslationRepository`, `IReportSnapshotService`, plus the `AddPolarEcommerce()` + `AddPolarReporting()` orchestrator extensions, plus 12 advanced reports (8 tenant-scoped + 4 SaaS-operator cross-tenant). PolarSharp / Webhooks / MultiTenant 1.2.1 → 1.3.0. See `CHANGELOG.md [1.3.0]` for the full content list and `TASKS.md` § "v1.3.0 — Missing Service Implementations ✅ SHIPPED" for the closed task list.
 
-- The publisher's HTTP calls will exercise the documented Polar endpoints, but full sandbox round-trip validation (real-order creation, real webhook delivery, real-payout linking) requires the test apps from v1.4.0 to confirm.
-- The snapshot service will iterate Polar events, but tuning the pagination / rate-limit posture for very large tenants requires production data.
-
-These limitations get explicit markers in the CHANGELOG and DocFX articles so consumers don't expect "production-ready" status from v1.3.0 alone.
-
-### Current state at end of 2026-05-13 session
-
-- **Commit `1347e01`** (already on main): docs clarification — PolarSharp does NOT talk to Stripe; the merchant connects their bank in Polar's dashboard; PolarSharp's role is link generation + status polling. Updated XML docs on `IPolarBusinessProfileService.BuildBankingSetupDeepLink` + `RefreshPayoutStatusAsync`, new "Banking and payouts" section in `docs/articles/ecommerce-catalog.md`, clarifying paragraph in the README. **The same commit also accidentally bundled in the start of sub-phase 1.3.A** — see below.
-- **`EfTranslationProviderResolver.cs`** — implementation committed as part of `1347e01` (148 lines, compiles clean, no tests yet). The agentic-master wrapper auto-staged the untracked file along with the explicit doc adds. The implementation itself is correct and reviewable; only the commit history is slightly misleading.
-- **Sub-phase 1.3.A is "code complete, tests pending"** — adding tests + DI registration is the next thing to do.
-
-### Next concrete actions
-
-1. Write `EfTranslationProviderResolverTests.cs` covering the 6 documented resolution paths (per-tenant success, per-tenant no factory, per-tenant decrypt failure, master success, master no factory, both null). Test approach: refactor to take an `ITenantBusinessProfileLookup` abstraction so tests don't need a full `PolarCatalogDbContext` + Finbuckle context. Add the EF-backed `ITenantBusinessProfileLookup` implementation in the same EFC package.
-2. Add a minimal `AddTranslationResolver()` extension method that registers the resolver and any registered `IPolarCatalogTranslatorFactory` instances. (The full `AddPolarEcommerce()` waits for 1.3.G.)
-3. Commit as `v1.3.A: translation provider resolver` (separate commit from the doc fix, so the history reflects intent even if `1347e01` accidentally contained the impl).
-4. Move on to 1.3.B.
+**Honest deferrals still open after v1.3.0** — flagged in CHANGELOG: the new services' HTTP boundaries call deferred-stub Polar adapters (TASK-V20-001..006 remain v2.0 work). v1.3.0 is feature-complete at the abstraction + orchestration layer; the live Polar HTTP plumbing ships in v2.0.
 
 ---
 

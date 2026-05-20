@@ -4,6 +4,41 @@ Authoritative progress log. Record completed tasks, verification results, RAG in
 
 ---
 
+## 2026-05-20 — Post-v1.3.0 reconciliation + audit pass
+
+### Current state on `main`
+
+- **Tip:** `508c8e4` (Merge PR #4 — wallet Phase 20 event store)
+- **Build:** `dotnet build PolarSharp.slnx -c Release` → 0 warnings, 0 errors across 103 src projects
+- **Test suite:** **1163 passing, 8 skipped, 0 failed** across 24 test projects (full slnx-wide `dotnet test`). The 8 skipped tests live in `CosmosDbSingleTenantUpgradeMigratorIntegrationTests.cs` and use the `[SkippableFact]` "skip-on-emulator-failure" pattern when the Cosmos Linux emulator can't boot locally.
+
+### Realignment of stale planning docs
+
+The previous PROGRESS.md entry was frozen at 2026-05-13 (the v1.2.1 / v1.3.0 kickoff session). Substantial work has since landed unrecorded:
+
+- **v1.3.0 released** — see `CHANGELOG.md [1.3.0] — 2026-05-13`. All 8 v1.3.0 sub-phases (TASK-V13-001..008) shipped: refunds, license validation, business profile, inventory updater, catalog publisher, snapshot service, orchestrator extensions, plus 12 advanced reports.
+- **v1.4.0 Phase 25 (Storefronts core)** merged 2026-05-19 — `DefaultStorefrontCartService`, `DefaultStorefrontCheckoutService`, `DefaultStorefrontCustomerService`, `GuestSessions` package with signed-cookie roundtrip + middleware; idempotency cache, cart expiry, guest-cart promotion. 89 unit tests across two new test projects.
+- **v1.4.0 Phase 20 (Wallet event store)** merged 2026-05-20 as PR #4 — `PolarSharp.PrepaidWallets.Abstractions` + core domain + EF Core / Marten event-store providers + funding-source provenance per the WTR coordination note. 124 wallet tests across 4 test projects.
+- **Phase 25 follow-ups** merged 2026-05-19 — idempotency replay coverage, cart-expiry tests, guest-cart promotion tests, narrowed `StorefrontScaffoldDiagnosticService` to flag only the remaining Phase 26 scaffolds.
+- **slnx fix** (commit `9472798`) — registered 4 wallet test projects so the solution-wide `dotnet test` sweep picks them up.
+
+### Audit pass cleanups (this session)
+
+- **Stale design docs archived** — moved `COORDINATION-NOTE-FROM-MAIN-SESSION.md`, `DESIGN-V20-005-PER-TENANT-SNAPSHOT.md`, `DESIGN-V20-019-WEBHOOK-CAPTURE-AND-ANALYZER.md`, `DESIGN-V20-020-MEMORY-LEAK-AUDIT.md`, `PrepaidWalletsLiftAndShift.md` into `docs/archive/`. Closed-work artifacts no longer pollute the repo root.
+- **TASKS.md realigned** — collapsed the 8 v1.3.0 sub-phase entries into a single closed summary block; added TASK-V14-001..004 covering Phase 25 (shipped), Phase 20 (shipped), Phase 26 pipeline stages (open), and the missing wallet CHANGELOG entry; added TASK-V20-017 (Litestream CLI) and TASK-V20-018 (cross-pod snapshot dedup) to fill task-id gaps that were previously orphaned in code + archived design docs.
+- **Litestream CLI stub markers refreshed** — `LitestreamCliCommands.Init` + `VerifyAsync` previously threw `NotImplementedException` with a stale "v1.2.x+1" deferral marker. Updated to reference TASK-V20-017.
+- **Templates version bump** — `PolarSharp.Templates.csproj` was at 1.2.1; bumped to 1.3.0 to match the rest of the v1.3.0 family (PolarSharp / Webhooks / MultiTenant).
+- **DECISIONS.md populated** — was 3 lines. Promoted seven locked architectural decisions from PLAN.md / Case Studies / coordination notes: Polar.sh-as-MoR framing, WTR framework, Phase 20 funding-source event provenance, lift-and-shift namespace convention, 5-layer tenant isolation, agent-coordination protocol, three-package UI (.Core / .Web / .Maui) split.
+
+### Audit findings deferred (not in-session)
+
+Two findings are tracked but not addressed in this session because both are multi-session efforts:
+
+- **CS1591 opt-outs in 35 packages** — `Directory.Build.props` mandates CS1591 as a build-error, but 35 packages (mostly the Storefronts family) suppress it via `<NoWarn>CS1591</NoWarn>`. Closing this gap requires adding XML doc coverage to those packages' public surface. Recommended approach: pick one representative package (likely `PolarSharp.EcommerceStorefronts.AspNetCore`), drop the suppression, add docs to satisfy the gate, then propagate the recipe across the remaining 34 in a dedicated docs-sweep phase.
+- **65 src packages with no paired test project** — notable test-less families: all Storefronts Polar bridges + Pipelines + Themes + SEO + Search + Shipping + Tax + WebComponents, all CustomerGraph + NaturalLanguageQuery packages, all EventStore EFC provider variants, both Marten reporting/onboarding bridges. Recommended approach: prioritize the Storefronts Polar bridges + Pipelines first since they're core to v1.4.0; add tests one package at a time as parallel agent work behind the existing 5-layer tenant isolation acceptance gate.
+
+---
+
 ## 2026-05-13 — PolarSharp v1.2.0 + v1.2.1 release, docs fixes, v1.3.0 kickoff
 
 ### v1.2.0 (released)

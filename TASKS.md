@@ -118,84 +118,56 @@ The v1.2.0 release ships 25 new packages, 12 migration sets, and 441/441 passing
 
 ---
 
-## v1.3.0 — Missing Service Implementations (active)
+## v1.3.0 — Missing Service Implementations ✅ SHIPPED 2026-05-13
 
-Discovered 2026-05-13 that about half the v1.2.0 service surface is interface-only. v1.3.0 builds the missing concrete implementations + the `AddPolarEcommerce()` / `AddPolarReporting()` orchestrator extensions, in 8 sub-phases. See `~/PLAN.md` for the full rationale and current state.
+All 8 sub-phases (TASK-V13-001..008) shipped together as v1.3.0 (tagged + released; see `CHANGELOG.md [1.3.0]`). The following summary records closure; per-task line-items are no longer maintained.
 
-### TASK-V13-001 — Sub-phase 1.3.A: TranslationProviderResolver
+- **TASK-V13-001** — `EfTranslationProviderResolver` + `AddTranslationResolver()`. Done.
+- **TASK-V13-002** — `EfCatalogRepository` + `EfTranslationRepository` + `PolarCatalogReader`. Done.
+- **TASK-V13-003** — `RefundService` + `LicenseKeyValidator` (with caching + grace period). Done.
+- **TASK-V13-004** — `PolarBusinessProfileService` (incl. `BuildBankingSetupDeepLink`) + `InventoryUpdater` (zero-boundary `SkuStockChanged` events). Done.
+- **TASK-V13-005** — `PolarCatalogPublisher` (variant + tier expansion, dependency-order, idempotency, resume-from-OutOfSync). Done.
+- **TASK-V13-006** — `ReportSnapshotService` (paginated polling, checkpoint advance, pre-aggregate recompute). Done. Plus 12 advanced reports (8 tenant + 4 SaaS-operator) atop the snapshot tables.
+- **TASK-V13-007** — `AddPolarEcommerce()` + `AddPolarReporting()` orchestrator extensions. Done.
+- **TASK-V13-008** — Release: PolarSharp / Webhooks / MultiTenant bumped 1.2.1 → 1.3.0; CHANGELOG [1.3.0] published; DocFX articles authored (refund-management, license-validation, business-profile, inventory, publisher, snapshot-service, advanced-reporting); tag `v1.3.0` pushed.
 
-- **Status:** in progress — implementation file (`EfTranslationProviderResolver.cs`, 148 LOC) committed inadvertently as part of doc commit `1347e01`. Tests + DI registration pending.
-- **Owner:** Claude / project owner
-- **Project:** PolarSharp.EcommerceStoreManagement.EntityFrameworkCore
-- **What's done:** Implements the documented 3-tier resolution (per-tenant via `TenantBusinessProfileEntity`, master via `IOptionsMonitor<EcommerceTranslationMasterOptions>`, disabled fallthrough). Decrypts per-tenant API keys via ASP.NET Core Data Protection `IDataProtectionProvider.ForTranslationApiKey()`. Quietly falls through on missing factory + on decryption failure (warning logs).
-- **What's left:** `EfTranslationProviderResolverTests.cs` covering the 6 documented resolution paths. Plan: introduce an `ITenantBusinessProfileLookup` abstraction so tests can supply profiles without spinning up a full `PolarCatalogDbContext` + Finbuckle context. Add a minimal `AddTranslationResolver()` extension method registering the resolver as scoped; the full `AddPolarEcommerce()` orchestrator follows in TASK-V13-007.
-- **Acceptance:** Tests cover the 6 paths; resolver wired into DI via the extension method; full test suite passes.
-
-### TASK-V13-002 — Sub-phase 1.3.B: EfCatalogRepository + EfTranslationRepository + PolarCatalogReader
-
-- **Status:** Not started
-- **Project:** PolarSharp.EcommerceStoreManagement (`PolarCatalogReader`) + PolarSharp.EcommerceStoreManagement.EntityFrameworkCore (the repos)
-- **What to build:**
-  - `EfCatalogRepository : ICatalogRepository` — EF data access for products/variants/categories/etc.
-  - `EfTranslationRepository : ITranslationRepository` — upsert/get/invalidate for `catalog_translations` rows
-  - `PolarCatalogReader : IPolarCatalogReader` — `GetProductLocalizedAsync` etc.; reassembles master + translation rows per requested language with master-language fallback per field; integrates `IPolarCatalogTranslationCache` for warm-on-read
-- **Acceptance:** Unit tests for reassembly (master only / partial translation / full translation). Per-tenant query-filter scoping verified.
-
-### TASK-V13-003 — Sub-phase 1.3.C: RefundService + LicenseKeyValidator
-
-- **Status:** Not started; depends on TASK-V13-002 (uses repositories for audit/cache persistence)
-- **Project:** PolarSharp.EcommerceStoreManagement
-- **What to build:**
-  - `RefundService : IRefundService` — wraps `PolarClient.Refunds` for IssueFullRefundAsync / IssuePartialRefundAsync / ListForOrderAsync. Writes to admin audit log.
-  - `LicenseKeyValidator : ILicenseKeyValidator` — wraps `PolarClient.LicenseKeys`; caches successful validations in `IMemoryCache` for configurable TTL (default 60s); grace-period support reading per-tenant override or global default (7 days)
-- **Acceptance:** Unit tests for caching, grace-period boundary, refund audit-log capture.
-
-### TASK-V13-004 — Sub-phase 1.3.D: BusinessProfileService + InventoryUpdater
-
-- **Status:** Not started
-- **Project:** PolarSharp.EcommerceStoreManagement
-- **What to build:**
-  - `PolarBusinessProfileService : IPolarBusinessProfileService` — local SQL persistence plus PATCH to `PolarClient.Organizations` for writable fields (country, currency, tax behaviour, OrganizationDetails). Read-only `account_id` / `payout_account_id` mirroring via `RefreshPayoutStatusAsync`. `BuildBankingSetupDeepLink` returns a URL to Polar's dashboard (no Stripe API call ever — see committed docs).
-  - `InventoryUpdater : IInventoryUpdater` — local count updates; emits `SkuStockChanged` to a bounded `Channel<>` consumed by a separate `InventoryToPolarSyncService` `IHostedService` that PATCHes `is_archived` on zero-boundary transitions only.
-- **Acceptance:** Unit tests for the channel zero-boundary detection, payout-status FSM transitions, and PATCH-vs-local field-set separation.
-
-### TASK-V13-005 — Sub-phase 1.3.E: PolarCatalogPublisher
-
-- **Status:** Not started — the largest sub-phase
-- **Project:** PolarSharp.EcommerceStoreManagement
-- **What to build:** `PolarCatalogPublisher : IPolarCatalogPublisher`. Implements `PreviewAsync` (computes the dependency-ordered `PublishPlan`) and `PublishAsync` (executes it). Variant expansion (1 local product with N variants → N Polar products with `polar_sharp_variant_axes` metadata). Tier expansion (1 local tier group with 3 tiers → 3 Polar products with cumulative benefit bundles). Idempotency via persisted `LocalProduct.PolarProductId` (POST when null, PATCH otherwise). Partial-failure resume: each outcome persisted as we go; restartable from `PublishStatus.OutOfSync`.
-- **Acceptance:** Unit tests for variant + tier expansion, dependency-order computation, idempotency on re-publish, resume-from-OutOfSync.
-
-### TASK-V13-006 — Sub-phase 1.3.F: ReportSnapshotService
-
-- **Status:** Not started
-- **Project:** PolarSharp.Reporting + PolarSharp.Reporting.EntityFrameworkCore
-- **What to build:** `ReportSnapshotService : IReportSnapshotService`. Paginates `/v1/events/`, `/v1/orders/`, `/v1/subscriptions/`, `/v1/customers/` from PolarClient; persists into the snapshot tables; advances `ReportSnapshotCheckpoint.LastPolarId` per resource per tenant. Recomputes pre-aggregated columns (`OrderCount`, `LifetimeValue`, `LineItemCount`, `RefundedAmount`) used by the hierarchical drilldown.
-- **Acceptance:** Idempotency test (re-run = no duplicate rows). Checkpoint-advance test. Pre-aggregate column accuracy test.
-
-### TASK-V13-007 — Sub-phase 1.3.G: AddPolarEcommerce + AddPolarReporting orchestrator extensions
-
-- **Status:** Not started; depends on TASK-V13-001..006
-- **Project:** PolarSharp.EcommerceStoreManagement (the extension class), PolarSharp.Reporting (its extension class)
-- **What to build:**
-  - `AddPolarEcommerce()` extension on `IServiceCollection` (or on an `IPolarSharpBuilder`) that registers every service from TASK-V13-001..005 plus the audit-log `SaveChangesInterceptor` plus all 5 cloning services
-  - `AddPolarReporting()` similar for the reporting service
-- **Acceptance:** A host calling `services.AddPolarEcommerce()` can resolve `IRefundService`, `ILicenseKeyValidator`, `IPolarCatalogPublisher`, etc. without any further registration. Same for `IReportSnapshotService` via `AddPolarReporting()`.
-
-### TASK-V13-008 — Sub-phase 1.3.H: Release artifacts
-
-- **Status:** Not started
-- **What to build:**
-  - Bump versions: all EcommerceStoreManagement-family packages 1.0.0 → 1.0.1 (or .NET-style 1.0.0 → 1.1.0 if you want to be clearer that these are functional additions); same for Reporting-family. The 4 v1.1.0-origin packages bump 1.2.1 → 1.3.0.
-  - Write the CHANGELOG `[1.3.0]` entry explaining what landed
-  - Update DocFX articles to remove "stubbed" markers
-  - Run the full test suite (target ≥441 passing, all new tests for v1.3.0 included)
-  - Tag `v1.3.1` (or whatever fits the bump decision) and push
-- **Acceptance:** Tag pushed, CI publish run green, packages live on GitHub Packages.
+**Note:** the HTTP wires for the new services still call deferred-stub Polar adapters (TASK-V20-001..006 remain open). v1.3.0 is "feature-complete at the abstraction + orchestration layer" — the live Polar HTTP plumbing under those orchestrators ships with v2.0. See `CHANGELOG.md` line 30 + below for the v2.0 task list.
 
 ---
 
-## v2.0 — New feature designs (added 2026-05-13 during v1.3.H pre-commit pass)
+## v1.4.0 — Storefronts + Wallet (in progress)
+
+### TASK-V14-001 — Storefront core services (Phase 25) ✅ SHIPPED to main 2026-05-19
+
+Cart / Checkout / Customer services + GuestSessions package + idempotency cache + cart expiry + guest-to-customer cart promotion. 89 unit tests across two new test projects. Documentation: `docs/articles/storefronts-cart-checkout.md` + Implementation Narrative + per-package READMEs. See `CHANGELOG.md [Unreleased]`.
+
+### TASK-V14-002 — Wallet event store (Phase 20) ✅ SHIPPED to main 2026-05-20 (PR #4)
+
+`PolarSharp.PrepaidWallets.Abstractions` (events, commands, queries, value objects, interfaces). `PolarSharp.PrepaidWallets` core domain (aggregate, handlers, behaviors, in-memory stores). EF Core + Marten event-store providers. Funding-source provenance (`FundingSourceKind` enum + `FundingSourceAllocation`) on every funding/credit/debit event per the WTR coordination note (see PLAN.md). Tenant_id indexes on EF provider migrations. DocFX article + Implementation Narrative. 124 wallet tests across 4 test projects; all green. **NOT YET IN CHANGELOG `[Unreleased]`** — gap; close before tagging v1.4.0.
+
+### TASK-V14-003 — 17 pipeline-stage skeletons (Phase 26)
+
+- **Status:** Not started
+- **Project:** `PolarSharp.EcommerceStorefronts.Pipelines.OrderProcessing` (~6 stages) + `.SubscriptionBilling` (~6) + `.RefundProcessing` (~5)
+- **Problem:** Phase 25 (cart/checkout core) shipped real services that hand off to the order-processing pipeline. Phase 26's stages — `QuoteTaxStage`, `ApplyDiscountsStage`, `FulfillStage`, etc. — are currently log-and-pass-through stubs. `StorefrontScaffoldDiagnosticService` flags this gap at startup (LogLevel.Warning) but there's no tracking task.
+- **What to build:** Real implementations per stage. Quote tax via `IStorefrontTaxProvider`. Validate discount codes server-side per Case Study 03 fraud-prevention discipline. Fulfillment hook to inventory + shipping. Subscription billing cycle handlers. Refund-flow stages.
+- **Acceptance:** Each stage has its own unit-test class + at least one integration test that drives a realistic checkout through the full pipeline. `StorefrontScaffoldDiagnosticService` no longer warns about Phase 26 scaffolds.
+- **References:** `src/PolarSharp.EcommerceStorefronts.Pipelines.*/Stages/*.cs`; `CHANGELOG.md` Phase 25 [Unreleased] note.
+
+### TASK-V14-004 — Wallet Phase 20 entry in CHANGELOG `[Unreleased]` ✅ DONE 2026-05-20
+
+- **Status:** Closed. CHANGELOG `[Unreleased]` now carries the Wallet event-store subsection (PrepaidWallets.Abstractions + core + EF Core / Marten providers + funding-source provenance + tenant_id indexing + 124 tests + DocFX article cross-ref). Authored in this session's audit-pass commit.
+
+### TASK-V14-005 — Wallet event-store Implementation Narrative
+
+- **Status:** Not started
+- **Project:** `docs/articles/narratives/`
+- **Problem:** CLAUDE.md mandates an Implementation Narrative for every major workflow change. The Phase 20 wallet event store shipped a DocFX article (`prepaid-wallets-event-sourcing.md`) but no narrative. The CHANGELOG `[Unreleased]` entry currently flags this as pending.
+- **What to do:** Write `docs/articles/narratives/wallet-event-store-for-saas-operators.md` following the Implementation Narratives writing-style rules in CLAUDE.md (audience-friendly, concrete scenarios, analogies, short paragraphs). Cover: what a prepaid wallet IS in plain language, why event sourcing (audit trail + replay), what funding-source provenance does for the SaaS operator (the tax story without lecturing), the FIFO debit allocation walkthrough, and "things to know" at the end (refund-as-credit, gift-card activation as a redemption-time taxable event, etc.). Add to `docs/articles/toc.yml` under Implementation Narratives.
+
+---
+
+## v2.0 — Honest deferrals from v1.3.0 + new feature designs (added 2026-05-13 during v1.3.H pre-commit pass)
 
 ### TASK-V20-010 — Tenant store clone / export-import (new feature)
 
@@ -262,6 +234,26 @@ Discovered 2026-05-13 that about half the v1.2.0 service surface is interface-on
 - **Status:** Not started — v2.0 (maintenance; deadline 2026-06-02 before runners force-upgrade)
 - **Problem:** v1.3.0 CI run surfaced deprecation warnings on `actions/checkout@v4`, `actions/setup-dotnet@v4`, `actions/upload-artifact@v4`. GitHub forces Node 24 by default on 2026-06-02; Node 20 removed from runners 2026-09-16.
 - **What to do:** Bump the three actions in `.github/workflows/ci.yml` and `.github/workflows/docs.yml` to the Node-24-compatible versions (likely `@v5` or whatever's current at the time). Validate with a tag run.
+
+### TASK-V20-017 — Litestream CLI implementation (`polar-mt litestream init|verify`)
+
+- **Status:** Not started — v2.0 (Stage C scaffolds present; bodies deferred)
+- **Project:** `PolarSharp.MultiTenant.EntityFrameworkCore.Sqlite`
+- **Problem:** `src/PolarSharp.MultiTenant.EntityFrameworkCore.Sqlite/Litestream/LitestreamCliCommands.cs` carries two methods (`Init`, `VerifyAsync`) that throw `NotImplementedException` with a previously stale "v1.2.x+1" marker. The Stage C deliverable shipped the shape + contract only; the actual command bodies + `System.CommandLine` discovery / dispatch were deferred.
+- **What to build:**
+  - `Init`: invoke `LitestreamConfigGenerator.Generate(...)` to produce `litestream.yml` from resolved `LitestreamOptions` + the SQLite database directory; `File.WriteAllText(outputPath, ...)`. Return exit code 0 on success, non-zero on validation failure.
+  - `VerifyAsync`: enumerate replicated `.db` files, restore each to a temp directory via `litestream restore`, open with `Microsoft.Data.Sqlite`, run `PRAGMA integrity_check`, report pass/fail summary. Useful for periodic DR rehearsal.
+  - Wire a `System.CommandLine` root command under the `polar-mt litestream <verb>` namespace; expose as the package's `dotnet tool` install target.
+- **Acceptance:** Unit tests for `Init` (config-generation success + write-failure paths). Integration test for `VerifyAsync` that boots a Litestream-replicating SQLite fixture, captures replicas, restores them, and asserts integrity-check passes. CLI discovery test: `polar-mt litestream --help` returns the expected verbs.
+
+### TASK-V20-018 — Cross-pod distributed snapshot dedup (per-tenant)
+
+- **Status:** Not started — v2.x (deferred from V20-005)
+- **Project:** `PolarSharp.Reporting` (snapshot orchestrator)
+- **Problem:** `PerTenantSnapshotOrchestrator` uses an in-process `SemaphoreSlim` per tenant. Multi-pod hosts (web farm) get cross-pod overlap windows where two pods independently fetch the same tenant's snapshot. Polar GET idempotency makes this wasteful, not destructive, so it's tolerable for v1.
+- **What to build:** Pluggable `IDistributedSnapshotLock` abstraction with a `RedisDistributedSnapshotLock` reference impl (Redis SETNX + TTL). Wire into the orchestrator so per-tenant snapshots dedup across pods. Single-pod hosts continue using the in-process default.
+- **Acceptance:** Integration test with two `PerTenantSnapshotOrchestrator` instances sharing a Redis (testcontainer); attempt simultaneous tenant ticks; assert only one outbound HTTP path runs.
+- **See:** `docs/archive/DESIGN-V20-005-PER-TENANT-SNAPSHOT.md` for original framing.
 
 ### TASK-V20-019 — Webhook payload capture + offline analyzer
 
