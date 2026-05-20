@@ -20,13 +20,23 @@ namespace PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.PostgreSQL.Mig
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             // ── Pre-existing model drift catch-up (auto-generated) ──────────────
+            // NOTE: the oldType strings were originally "nvarchar(max)" — that came from the
+            // EF scaffolding having been run against a SqlServer-shaped model snapshot. On
+            // PostgreSQL the columns were actually created as `text` by Npgsql's type mapper
+            // at Initial-migration time (Npgsql silently maps `nvarchar(max)` → `text` in
+            // CreateTable). The npgsql migration SQL generator does NOT apply that same
+            // mapping to AlterColumn's oldType — it emits `ALTER COLUMN … USING …::nvarchar`
+            // and PostgreSQL rejects the cast with "type nvarchar does not exist" (error 42704).
+            // Updating oldType to the engine-truth value ("text") makes the AlterColumn a
+            // detected no-op and the migration applies cleanly. Discovered by the
+            // PostgreSqlCatalogDbIntegrationTests Testcontainers harness on 2026-05-20.
             migrationBuilder.AlterColumn<string>(
                 name: "BeforeValues",
                 table: "polar_admin_audit_log",
                 type: "text",
                 nullable: true,
                 oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
+                oldType: "text",
                 oldNullable: true);
 
             migrationBuilder.AlterColumn<string>(
@@ -35,7 +45,7 @@ namespace PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.PostgreSQL.Mig
                 type: "text",
                 nullable: true,
                 oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
+                oldType: "text",
                 oldNullable: true);
 
             // ── V20-008 row-level security ──────────────────────────────────────

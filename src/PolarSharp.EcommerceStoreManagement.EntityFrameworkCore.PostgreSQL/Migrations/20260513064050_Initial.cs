@@ -46,8 +46,14 @@ namespace PolarSharp.EcommerceStoreManagement.EntityFrameworkCore.PostgreSQL.Mig
                     EntityId = table.Column<Guid>(type: "uuid", nullable: false),
                     Action = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
                     OccurredAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    BeforeValues = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    AfterValues = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    // Fixed 2026-05-20: original scaffold emitted "nvarchar(max)" (a SQL Server type)
+                    // here because the EF migration was scaffolded against a SqlServer-shaped model
+                    // snapshot. PostgreSQL has no `nvarchar` type and rejects the column with error
+                    // 42704 "type \"nvarchar\" does not exist" at CREATE TABLE time. Discovered by
+                    // the PostgreSqlCatalogDbIntegrationTests Testcontainers harness; the EnableRowLevelSecurity
+                    // migration's matching AlterColumn oldType strings were corrected in the same pass.
+                    BeforeValues = table.Column<string>(type: "text", nullable: true),
+                    AfterValues = table.Column<string>(type: "text", nullable: true),
                     ChangedFields = table.Column<string>(type: "text", nullable: false),
                     IsFakeData = table.Column<bool>(type: "boolean", nullable: false),
                     CrossTenantAccess = table.Column<bool>(type: "boolean", nullable: false),
