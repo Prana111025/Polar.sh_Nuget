@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>PolarSharp.Templates</PackageId>
-    <Version>1.2.1</Version>
+    <Version>1.3.0</Version>
     <Title>PolarSharp dotnet new Templates</Title>
     <Authors>Molls and Hersh, LLC</Authors>
     <Description>dotnet new template pack for PolarSharp — scaffold a Polar.sh webhook handler in one command: dotnet new polar-handler --event OrderCreatedEvent --name OrderCreatedHandler</Description>
