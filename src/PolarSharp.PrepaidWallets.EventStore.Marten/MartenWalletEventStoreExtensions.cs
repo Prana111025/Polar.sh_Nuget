@@ -1,5 +1,7 @@
 using Marten;
 using Microsoft.Extensions.DependencyInjection;
+using PolarSharp.PrepaidWallets.Abstractions.Events;
+using PolarSharp.PrepaidWallets.Abstractions.Stores;
 
 namespace PolarSharp.PrepaidWallets.EventStore.Marten;
 
@@ -32,8 +34,20 @@ public static class MartenWalletEventStoreExtensions
         {
             opts.Connection(postgresConnectionString);
             opts.DatabaseSchemaName = schemaName;
-            // Wallet event-type registration + projection wiring lands in Phase 20.x.
+            // Guid stream keys are Marten's default; the wallet uses the WalletId.Value Guid directly.
+            opts.Events.AddEventType(typeof(WalletOpened));
+            opts.Events.AddEventType(typeof(WalletFunded));
+            opts.Events.AddEventType(typeof(WalletDebited));
+            opts.Events.AddEventType(typeof(WalletCredited));
+            opts.Events.AddEventType(typeof(WalletRefunded));
+            opts.Events.AddEventType(typeof(WalletFrozen));
+            opts.Events.AddEventType(typeof(WalletUnfrozen));
+            opts.Events.AddEventType(typeof(WalletClosed));
+            opts.RegisterDocumentType<MartenWalletSnapshotDocument>();
         });
+
+        services.AddSingleton<IWalletEventStore, MartenWalletEventStore>();
+        services.AddSingleton<IWalletSnapshotStore, MartenWalletSnapshotStore>();
 
         return services;
     }
