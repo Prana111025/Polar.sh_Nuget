@@ -5,11 +5,13 @@ using PolarSharp.EcommerceStorefronts.Abstractions.Cart;
 using PolarSharp.EcommerceStorefronts.Abstractions.Checkout;
 using PolarSharp.EcommerceStorefronts.Abstractions.Customers;
 using PolarSharp.EcommerceStorefronts.Abstractions.Identity;
+using PolarSharp.EcommerceStorefronts.Abstractions.Search;
 using PolarSharp.EcommerceStorefronts.Cart;
 using PolarSharp.EcommerceStorefronts.Checkout;
 using PolarSharp.EcommerceStorefronts.Customers;
 using PolarSharp.EcommerceStorefronts.Identity;
 using PolarSharp.EcommerceStorefronts.Pipelines.OrderProcessing;
+using PolarSharp.EcommerceStorefronts.Search;
 
 namespace PolarSharp.EcommerceStorefronts.Extensions;
 
@@ -74,6 +76,13 @@ public static class StorefrontServiceCollectionExtensions
         // Customer source — Null default; hosts plug a real source via the
         // PolarSharp.EcommerceStorefronts.Polar.Reporting bridge or a host-specific impl.
         services.TryAddScoped<IStorefrontCustomerSource, NullStorefrontCustomerSource>();
+
+        // Search — in-memory default so storefronts "just work" out of the box.
+        // Suitable for up to ~10K products per tenant. Tenants who outgrow it install one
+        // of the dedicated bridge packages (Search.Sqlite / Search.PostgreSql /
+        // Search.Elasticsearch / Search.AzureAiSearch) which register their own
+        // IStorefrontSearchProvider BEFORE this call — TryAddScoped respects the override.
+        services.TryAddScoped<IStorefrontSearchProvider, InMemoryStorefrontSearchProvider>();
 
         services.TryAddScoped<IStorefrontCartService, DefaultStorefrontCartService>();
 
