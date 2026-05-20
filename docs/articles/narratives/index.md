@@ -26,6 +26,7 @@ A few rules we keep ourselves to, so these stay readable:
 Narratives that walk through how the pieces fit together when you wire PolarSharp into your own application.
 
 - [**Choosing your PolarSharp DI wiring**](choosing-your-polarsharp-di-wiring.md) — the three most common deployment shapes (minimum, middle, and full) laid out side by side, with a plain-language explanation of why multiple PolarSharp packages can all "register MediatR" without conflicting and what actually happens when you install a package but forget to wire it up. The narrative everyone reading their startup file for the first time wishes existed.
+- [**Cart and checkout, in plain language**](storefronts-cart-and-checkout-for-customers.md) — what actually happens when a customer adds something to their cart, applies a discount, types in their address, and hits "Pay". Covers the server-as-source-of-truth fraud-prevention discipline, the in-page progress streaming as each checkout stage runs, and the small set of "things to know" gotchas every storefront operator should be aware of.
 
 ## Coming soon
 

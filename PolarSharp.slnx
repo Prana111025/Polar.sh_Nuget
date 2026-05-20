@@ -129,6 +129,8 @@
     <Project Path="tests/PolarSharp.Onboarding.Tests/PolarSharp.Onboarding.Tests.csproj" />
     <Project Path="tests/PolarSharp.EcommerceStoreManagement.Tests/PolarSharp.EcommerceStoreManagement.Tests.csproj" />
     <Project Path="tests/PolarSharp.EcommerceStorefronts.Abstractions.Tests/PolarSharp.EcommerceStorefronts.Abstractions.Tests.csproj" />
+    <Project Path="tests/PolarSharp.EcommerceStorefronts.Tests/PolarSharp.EcommerceStorefronts.Tests.csproj" />
+    <Project Path="tests/PolarSharp.EcommerceStorefronts.GuestSessions.Tests/PolarSharp.EcommerceStorefronts.GuestSessions.Tests.csproj" />
     <Project Path="tests/PolarSharp.EcommerceStoreManagement.Translation.Tests/PolarSharp.EcommerceStoreManagement.Translation.Tests.csproj" />
     <Project Path="tests/PolarSharp.Reporting.Tests/PolarSharp.Reporting.Tests.csproj" />
     <Project Path="tests/PolarSharp.Reporting.GraphQL.Tests/PolarSharp.Reporting.GraphQL.Tests.csproj" />

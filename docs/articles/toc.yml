@@ -24,6 +24,8 @@
   href: onboarding.md
 - name: Ecommerce Store Management
   href: ecommerce-catalog.md
+- name: Storefronts — Cart and Checkout
+  href: storefronts-cart-checkout.md
 - name: Refund Management
   href: refund-management.md
 - name: License Key Validation
@@ -63,5 +65,7 @@
       href: narratives/index.md
     - name: Choosing your PolarSharp DI wiring
       href: narratives/choosing-your-polarsharp-di-wiring.md
+    - name: Cart and checkout, in plain language
+      href: narratives/storefronts-cart-and-checkout-for-customers.md
 - name: Disclaimer
   href: disclaimer.md
