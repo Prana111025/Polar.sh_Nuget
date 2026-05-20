@@ -13,7 +13,6 @@
     <PackageTags>polar;ecommerce;storefronts;guest;sessions;saas</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RootNamespace>PolarSharp.EcommerceStorefronts.GuestSessions</RootNamespace>
-    <NoWarn>CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
