@@ -21,6 +21,16 @@ and [Common Changelog](https://common-changelog.org) format.
 - **89 unit tests** across two new test projects (`PolarSharp.EcommerceStorefronts.Tests` + `PolarSharp.EcommerceStorefronts.GuestSessions.Tests`), all green.
 - **Documentation** — DocFX article `docs/articles/storefronts-cart-checkout.md` and Implementation Narrative `docs/articles/narratives/storefronts-cart-and-checkout-for-customers.md`; per-package README updates for the three Phase 25 packages.
 
+#### Wallet event store — `PolarSharp.PrepaidWallets.Abstractions` + `PolarSharp.PrepaidWallets` + EF Core / Marten event-store providers (v1.4.0 Phase 20)
+
+- **Abstractions package** (`PolarSharp.PrepaidWallets.Abstractions`) — public event types (`WalletFunded`, `WalletCredited`, `WalletDebited`, `WalletRefunded`, plus the supporting envelope), command + query types, value objects (`WalletId`, `TokenAmount`, `DebitTarget`, `FundingSourceAllocation`), and interfaces (`IWalletEventStore`, `IWalletAggregateRepository`, `IWalletTransactionContext`). Lift-safe core with zero Polar.sh-specific coupling (per Case Study 01 lift-and-shift discipline).
+- **Core domain** (`PolarSharp.PrepaidWallets`) — `WalletAggregate` with FIFO funding-bucket projection, command handlers, MediatR pipeline behaviors (idempotency check, tenant-context enforcement, validation), in-memory `IWalletEventStore` + `IWalletAggregateRepository` defaults.
+- **EF Core event-store provider** (`PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore` + per-provider packages for SqlServer / PostgreSQL / Sqlite / MariaDb / Cosmos) — append-only event table with `ix_wallet_events_tenant_id_occurred_at (tenant_id, occurred_at DESC)` index per the WTR coordination requirement, optimistic-concurrency check on `sequence_no`, idempotency dedup via `idempotency_key`. Initial migrations included for every provider.
+- **Marten event-store provider** (`PolarSharp.PrepaidWallets.EventStore.Marten`) — Marten-native append + load + projection registration; computed index on `tenant_id` mirrors the EF Core posture.
+- **Funding-source provenance** — every `WalletFunded` + `WalletCredited` stamps a `FundingSourceKind` enum (`CustomerCashFunded`, `GiftCardActivation`, `RefundAsCredit`, `TenantPromotionalGrant`, `TenantBugFixCompensation`, `TrialCredit`) at issue time. Every `WalletDebited` stamps an `IReadOnlyList<FundingSourceAllocation>` computed via FIFO across remaining buckets. This is immutable on the event so the Phase 22.5 Wallet Tax Responsibility (WTR) framework can compute tax obligations at scale without replay; see `DECISIONS.md` D-003 for the binding decision.
+- **124 unit tests** across 4 new test projects (`PolarSharp.PrepaidWallets.Abstractions.Tests`, `PolarSharp.PrepaidWallets.Tests`, `PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore.Tests`, `PolarSharp.PrepaidWallets.EventStore.Marten.Tests`); all green and registered in `PolarSharp.slnx`.
+- **Documentation** — DocFX article `docs/articles/prepaid-wallets-event-sourcing.md`; per-package READMEs for the abstractions, core, and event-store provider packages. Implementation Narrative is pending — see TASK-V14-005.
+
 ### Changed
 
 #### Storefront scaffold diagnostic — `PolarSharp.EcommerceStorefronts.AspNetCore`

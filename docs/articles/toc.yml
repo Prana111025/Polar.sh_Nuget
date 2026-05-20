@@ -42,6 +42,8 @@
   href: snapshot-service.md
 - name: Advanced Reporting (12 reports)
   href: advanced-reporting.md
+- name: Prepaid Wallets (Event Sourcing)
+  href: prepaid-wallets-event-sourcing.md
 - name: EF Core Migrations
   href: migrations.md
 - name: Localization
