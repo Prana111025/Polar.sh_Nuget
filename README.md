@@ -329,6 +329,36 @@ Generates a complete, XML-documented, compilable handler class with all availabl
 
 ---
 
+## Cloning to a fresh machine
+
+This repo carries everything needed to bootstrap a fresh-machine clone with full agent + memory context. Two install scripts handle the off-project state that `git clone` doesn't replicate by default.
+
+```sh
+# 1. Clone the repo wherever you want it
+git clone https://github.com/MollsAndHersh/Polar.sh_Nuget.git
+cd Polar.sh_Nuget
+
+# 2. Install home-rooted Claude agent files (AGENTS.md, CLAUDE.md, ZoranHorvat.md)
+#    These apply to ALL Claude projects on the machine — not just PolarSharp.
+./agent-context/install.sh
+
+# 3. Install per-project Claude memory notes (architectural anchors + behavioral rules
+#    accumulated across sessions). Without this, fresh-machine sessions start with no
+#    memory context.
+./agent-memory/install.sh
+```
+
+Both scripts:
+- Back up any existing files at the destinations to a timestamped `$HOME/.agent-*-backup-YYYYMMDD-HHMMSS/` directory before overwriting
+- Preserve file timestamps + modes
+- Work regardless of where you cloned the project (agent-memory computes the Claude-Code project-hash from the clone path automatically)
+
+See `agent-context/README.md` and `agent-memory/README.md` for the full mechanism + how to sync updates back to the vendored snapshots after a session writes new memory notes.
+
+Then continue with **Local Development Setup** below for the .NET dev environment.
+
+---
+
 ## Local Development Setup
 
 Before running PolarTestApp you need three things: a Polar sandbox token, a webhook secret, and a tunnel so Polar can reach your localhost.
