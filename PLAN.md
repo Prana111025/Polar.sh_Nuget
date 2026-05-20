@@ -541,8 +541,8 @@ KeyCloak (existing) is for **enterprise SSO** — the SaaS host's own staff sign
 │  └─────────────────────────┘  └──────────────────────────┘    │
 │                                                                │
 │  ┌── Accessibility Score ──────────────────────────────────┐   │
-│  │ WCAG AA: 28 of 32 tokens pass    ⚠                      │   │
-│  │ Color-blind safe: 26 of 32 tokens pass  ⚠               │   │
+│  │ WCAG AA: 27 of 31 tokens pass    ⚠                      │   │
+│  │ Color-blind safe: 25 of 31 tokens pass  ⚠               │   │
 │  │ [View 6 issues] [Publish anyway → requires sign-off]    │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                │
@@ -558,7 +558,7 @@ Key behavioral elements (all locked):
 | **Color-blindness simulator** | Tabbed switch on the iframe: `Normal` / `Deuteranopia` / `Protanopia` / `Tritanopia` / `high-contrast prefs`. Each tab applies a CSS color-transformation filter (lightweight: ~20-line JS color matrix per type) to the iframe contents. Designer toggles tabs to see how their theme renders for ~8% of customers with color-vision deficiencies. |
 | **Per-token inline WCAG status** | Each color token shows an inline status indicator next to its picker: `✓ AA on surface` / `⚠ Fails AA on text` / etc. Updates continuously as designer changes the value. Color tokens are checked against multiple target pairings (surface, text, text-inverse, border, etc.) — fails on ANY relevant pairing surface the warning. |
 | **Inline accessible-palette suggestions** | When a token fails WCAG, the editor surfaces a "Suggest: #003d80" inline alternative button. Designer clicks → token value updates to the suggestion (which passes WCAG against the relevant pairings while remaining visually close to the designer's intent — color-distance algorithm). |
-| **Always-visible accessibility score panel** | Bottom of the editor; aggregated status across all 32 tokens (WCAG pass count + color-blind-safe pass count). Click "View 6 issues" to drill in. |
+| **Always-visible accessibility score panel** | Bottom of the editor; aggregated status across all 31 tokens (WCAG pass count + color-blind-safe pass count). Click "View 6 issues" to drill in. |
 | **Publish-gate** | Critical accessibility failures (e.g. body text contrast fails) block publish. Tenant admin can override via typed acknowledgment ("I understand this theme has accessibility issues; publish anyway") — sign-off is audit-logged. Non-critical warnings (e.g. one color is hard to distinguish from another in protanopia) don't block but surface in the score. |
 | **Lock-token requires WCAG pass** | Designer can lock a color token only if its value currently passes WCAG against all relevant pairings. Locking an inaccessible color is forbidden by design (the brand-consistency lock and the accessibility floor reinforce each other). |
 
@@ -577,7 +577,7 @@ Each token type gets its own purpose-built control:
 
 ##### Save + publish flow
 
-**Draft + Publish with accessibility gate.** Designer's changes accumulate in a per-tenant draft (auto-saved per token change). Changes don't affect live storefront until designer clicks "Publish theme". Publish runs the accessibility validator across all 32 tokens; if any token has a CRITICAL failure (body-text contrast fails AA / locked-token resolves to inaccessible value / etc.), the publish blocks. Tenant admin override requires typed acknowledgment + is audit-logged. Non-critical warnings (color hard-to-distinguish in tritanopia, motion-duration is faster than user-prefers-reduced-motion implies) don't block — surface in the score, designer decides whether to fix.
+**Draft + Publish with accessibility gate.** Designer's changes accumulate in a per-tenant draft (auto-saved per token change). Changes don't affect live storefront until designer clicks "Publish theme". Publish runs the accessibility validator across all 31 tokens; if any token has a CRITICAL failure (body-text contrast fails AA / locked-token resolves to inaccessible value / etc.), the publish blocks. Tenant admin override requires typed acknowledgment + is audit-logged. Non-critical warnings (color hard-to-distinguish in tritanopia, motion-duration is faster than user-prefers-reduced-motion implies) don't block — surface in the score, designer decides whether to fix.
 
 **Preview-link sharing.** Designer clicks "Preview Link" → editor generates a signed URL (`storefront.example.com/?themeDraft={signed-token}`; TTL 7 days; one-time-use option). Designer sends to a stakeholder (or themselves on another device); stakeholder opens the storefront with the draft theme applied. Stakeholder cannot edit; can browse the live site with the draft styling to evaluate.
 
