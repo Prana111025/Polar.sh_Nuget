@@ -17,6 +17,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
+    <!-- SkippableFact for the LiveProviderIntegrationTests gated on per-provider API-key env vars. See TASK-V14-007. -->
+    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>
