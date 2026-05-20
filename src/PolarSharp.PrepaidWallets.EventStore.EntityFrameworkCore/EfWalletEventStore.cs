@@ -3,6 +3,9 @@ using PolarSharp.PrepaidWallets.Abstractions;
 using PolarSharp.PrepaidWallets.Abstractions.Events;
 using PolarSharp.PrepaidWallets.Abstractions.Stores;
 
+// EF Core 10 model-snapshot generator runs even in Release builds, calling into the model graph.
+// No additional pragmas needed here — the schema is fully declared in OnModelCreating.
+
 namespace PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore;
 
 /// <summary>
@@ -97,10 +100,12 @@ public sealed class EfWalletEventStore : IWalletEventStore
         }
 
         var serialized = _serializer.Serialize(@event);
+        var tenantId = await ResolveTenantIdAsync(@event, ct).ConfigureAwait(false);
         var row = new WalletEventRecord
         {
             Id = Guid.NewGuid(),
             WalletId = @event.WalletId.Value,
+            TenantId = tenantId,
             SequenceNo = @event.SequenceNo,
             EventType = serialized.EventType,
             EventPayloadJson = serialized.PayloadJson,
@@ -125,5 +130,26 @@ public sealed class EfWalletEventStore : IWalletEventStore
         }
 
         return new AppendOutcome(@event, ResultingVersion: @event.SequenceNo, WasIdempotencyReplay: false);
+    }
+
+    /// <summary>
+    /// Determine the wallet's tenant scope at append time. <c>WalletOpened</c> events carry their
+    /// own <c>TenantId</c>; subsequent events look it up from the wallet's first event in the
+    /// table. The lookup is cheap because <c>wallet_events</c> is uniquely indexed on
+    /// <c>(wallet_id, sequence_no)</c>.
+    /// </summary>
+    private async Task<Guid?> ResolveTenantIdAsync(IWalletEvent @event, CancellationToken ct)
+    {
+        if (@event is WalletOpened opened)
+        {
+            return opened.TenantId.TryGetValue(out var t) ? t : null;
+        }
+
+        return await _db.WalletEvents
+            .AsNoTracking()
+            .Where(x => x.WalletId == @event.WalletId.Value && x.SequenceNo == 1)
+            .Select(x => x.TenantId)
+            .FirstOrDefaultAsync(ct)
+            .ConfigureAwait(false);
     }
 }

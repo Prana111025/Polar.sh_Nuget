@@ -22,7 +22,8 @@ public sealed record OpenWalletCommand(
 /// <param name="WalletId">Target wallet.</param>
 /// <param name="Amount">Tokens credited (face value).</param>
 /// <param name="BonusTokens">Bonus tokens credited (zero when no bonus applies).</param>
-/// <param name="Source">Which processor delivered the payment.</param>
+/// <param name="Source">Which processor delivered the payment (processor-level provenance).</param>
+/// <param name="SourceKind">Tax-bucket category of the funded tokens (semantic provenance for Phase 22.5 WTR).</param>
 /// <param name="CustomerChargedAmountCents">Customer-charged amount, in cents.</param>
 /// <param name="ProcessorFeeCents">Processor fee withheld, in cents.</param>
 /// <param name="SaaSProfitCents">SaaS share, in cents.</param>
@@ -36,6 +37,7 @@ public sealed record FundWalletCommand(
     TokenAmount Amount,
     TokenAmount BonusTokens,
     FundingSource Source,
+    FundingSourceKind SourceKind,
     int CustomerChargedAmountCents,
     int ProcessorFeeCents,
     int SaaSProfitCents,
@@ -64,6 +66,7 @@ public sealed record DebitWalletCommand(
 /// <param name="WalletId">Target wallet.</param>
 /// <param name="Amount">Tokens to credit.</param>
 /// <param name="Reason">Free-form reason.</param>
+/// <param name="SourceKind">Tax-bucket category of the credited tokens. Drives the Phase 22.5 WTR framework's discount-vs-revenue classification.</param>
 /// <param name="RelatedPurchaseOrderId">Optional PO id when the credit consumes PO authorization.</param>
 /// <param name="ActorUserId">The operator that issued the credit.</param>
 /// <param name="IdempotencyKey">Idempotency key for retry safety.</param>
@@ -71,6 +74,7 @@ public sealed record CreditWalletCommand(
     WalletId WalletId,
     TokenAmount Amount,
     string Reason,
+    FundingSourceKind SourceKind,
     Option<Guid> RelatedPurchaseOrderId,
     Guid ActorUserId,
     IdempotencyKey IdempotencyKey) : IWalletCommand<WalletCommandResult>;

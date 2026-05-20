@@ -71,6 +71,7 @@ public sealed class EfWalletSnapshotStore : IWalletSnapshotStore
             OpenedAt = s.OpenedAt,
             LastActivityAt = s.LastActivityAt,
             TakenAt = s.TakenAt,
+            BucketsJson = BucketsJsonCodec.Serialize(s.RemainingBuckets),
         };
 
     private static WalletSnapshot FromRow(WalletSnapshotRecord r) =>
@@ -84,5 +85,6 @@ public sealed class EfWalletSnapshotStore : IWalletSnapshotStore
             (WalletStatus)r.StatusCode,
             r.OpenedAt,
             r.LastActivityAt,
-            r.TakenAt);
+            r.TakenAt,
+            BucketsJsonCodec.Deserialize(r.BucketsJson));
 }

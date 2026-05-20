@@ -128,6 +128,7 @@ public sealed class InMemoryEventStoreTests
             new TokenAmount(100),
             TokenAmount.Zero,
             FundingSource.Manual("test"),
+            FundingSourceKind.CustomerCashFunded,
             10_000, 300, 200, 500, 9_000,
             "{}");
 }
@@ -179,5 +180,6 @@ public sealed class InMemorySnapshotStoreTests
             WalletStatus.Active,
             WalletFixture.At,
             WalletFixture.At,
-            WalletFixture.At);
+            WalletFixture.At,
+            Array.Empty<Abstractions.Stores.FundingBucketState>());
 }

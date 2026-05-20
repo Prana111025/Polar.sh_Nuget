@@ -24,7 +24,12 @@ public sealed class MartenWalletSnapshotDocumentTests
             Status: WalletStatus.Active,
             OpenedAt: new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
             LastActivityAt: new DateTimeOffset(2026, 5, 19, 12, 0, 0, TimeSpan.Zero),
-            TakenAt: new DateTimeOffset(2026, 5, 19, 12, 30, 0, TimeSpan.Zero));
+            TakenAt: new DateTimeOffset(2026, 5, 19, 12, 30, 0, TimeSpan.Zero),
+            RemainingBuckets: new[]
+            {
+                new FundingBucketState(2, FundingSourceKind.CustomerCashFunded, 10_000),
+                new FundingBucketState(5, FundingSourceKind.TenantPromotionalGrant, 5_000),
+            });
 
         var doc = MartenWalletSnapshotDocument.FromSnapshot(original);
         var rt = doc.ToSnapshot();
@@ -45,7 +50,8 @@ public sealed class MartenWalletSnapshotDocumentTests
             WalletStatus.Closed,
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            Array.Empty<FundingBucketState>());
         var doc = MartenWalletSnapshotDocument.FromSnapshot(original);
 
         Assert.Null(doc.TenantId);

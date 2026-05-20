@@ -30,12 +30,14 @@ internal static class WalletFixture
         WalletId id,
         long amount,
         string keySuffix = "fund-1",
-        long bonus = 0) =>
+        long bonus = 0,
+        FundingSourceKind sourceKind = FundingSourceKind.CustomerCashFunded) =>
         new(
             id,
             new TokenAmount(amount),
             new TokenAmount(bonus),
             FundingSource.Polar($"order-{keySuffix}"),
+            sourceKind,
             CustomerChargedAmountCents: 25_000,
             ProcessorFeeCents: 750,
             SaaSProfitCents: 500,
@@ -54,11 +56,16 @@ internal static class WalletFixture
             Actor,
             Key(keySuffix));
 
-    public static CreditWalletCommand CreditCommand(WalletId id, long amount, string keySuffix = "credit-1") =>
+    public static CreditWalletCommand CreditCommand(
+        WalletId id,
+        long amount,
+        string keySuffix = "credit-1",
+        FundingSourceKind sourceKind = FundingSourceKind.TenantPromotionalGrant) =>
         new(
             id,
             new TokenAmount(amount),
             "PO-123",
+            sourceKind,
             Option<Guid>.None,
             Actor,
             Key(keySuffix));

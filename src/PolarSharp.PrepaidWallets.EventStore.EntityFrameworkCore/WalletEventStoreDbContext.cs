@@ -44,8 +44,13 @@ public abstract class WalletEventStoreDbContext : DbContext
         events.Property(x => x.IdempotencyKey).IsRequired().HasMaxLength(IdempotencyKeyMaxLength);
         events.Property(x => x.OccurredAt).IsRequired();
         events.Property(x => x.ActorUserId).IsRequired();
+        events.Property(x => x.TenantId).IsRequired(false);
         events.HasIndex(x => new { x.WalletId, x.SequenceNo }).IsUnique();
         events.HasIndex(x => new { x.WalletId, x.IdempotencyKey }).IsUnique();
+        // Index supports Phase 22.5 WTR tax-aggregation queries spanning all wallets of a tenant
+        // across a date range. The leading column is TenantId; OccurredAt is descending so the
+        // most-recent events appear first in normal "what happened lately" queries too.
+        events.HasIndex(x => new { x.TenantId, x.OccurredAt }).HasDatabaseName("ix_wallet_events_tenant_id_occurred_at");
 
         var snapshots = modelBuilder.Entity<WalletSnapshotRecord>();
         snapshots.ToTable("wallet_snapshots");
@@ -53,6 +58,7 @@ public abstract class WalletEventStoreDbContext : DbContext
         snapshots.Property(x => x.Currency).IsRequired().HasMaxLength(3);
         snapshots.Property(x => x.StatusCode).IsRequired();
         snapshots.Property(x => x.BalanceTokens).IsRequired();
+        snapshots.Property(x => x.BucketsJson).IsRequired();
     }
 
     /// <summary>Maximum stored idempotency-key length; matches the abstraction's constant.</summary>

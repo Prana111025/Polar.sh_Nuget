@@ -181,6 +181,7 @@ public sealed class WalletAggregateTests
             new TokenAmount(10),
             TokenAmount.Zero,
             FundingSource.Manual("test"),
+            FundingSourceKind.CustomerCashFunded,
             0, 0, 0, 0, 0,
             "{}");
         Assert.Throws<ArgumentOutOfRangeException>(() => wallet.Apply(skipping));
@@ -199,6 +200,7 @@ public sealed class WalletAggregateTests
             new TokenAmount(10),
             TokenAmount.Zero,
             FundingSource.Manual("test"),
+            FundingSourceKind.CustomerCashFunded,
             0, 0, 0, 0, 0,
             "{}");
         Assert.Throws<InvalidOperationException>(() => wallet.Apply(stray));

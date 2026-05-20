@@ -145,7 +145,8 @@ public sealed class EfWalletEventStoreTests : IDisposable
         var id = WalletId.NewId();
         var snap = new WalletSnapshot(
             id, 17, Customer, Option<Guid>.None, "USD",
-            new TokenAmount(5_000), WalletStatus.Active, At, At, At);
+            new TokenAmount(5_000), WalletStatus.Active, At, At, At,
+            new[] { new FundingBucketState(2, FundingSourceKind.CustomerCashFunded, 5_000) });
 
         using (var db = NewContext())
         {
@@ -169,9 +170,11 @@ public sealed class EfWalletEventStoreTests : IDisposable
         {
             var s = new EfWalletSnapshotStore(db);
             await s.SaveAsync(new WalletSnapshot(id, 5, Customer, Option<Guid>.None, "USD",
-                new TokenAmount(100), WalletStatus.Active, At, At, At));
+                new TokenAmount(100), WalletStatus.Active, At, At, At,
+                new[] { new FundingBucketState(2, FundingSourceKind.CustomerCashFunded, 100) }));
             await s.SaveAsync(new WalletSnapshot(id, 10, Customer, Option<Guid>.None, "USD",
-                new TokenAmount(200), WalletStatus.Active, At, At, At));
+                new TokenAmount(200), WalletStatus.Active, At, At, At,
+                new[] { new FundingBucketState(7, FundingSourceKind.CustomerCashFunded, 200) }));
         }
 
         using (var db = NewContext())
@@ -212,6 +215,7 @@ public sealed class EfWalletEventStoreTests : IDisposable
             new TokenAmount(100),
             TokenAmount.Zero,
             FundingSource.Manual("test"),
+            FundingSourceKind.CustomerCashFunded,
             10_000, 300, 200, 500, 9_000,
             "{}");
 }

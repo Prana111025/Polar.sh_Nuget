@@ -122,6 +122,31 @@ The wallet is deliberately narrow in scope. It does **not**:
 This narrowness is the design's strength: every concern lives in one place, and the wallet itself
 stays small enough to reason about completely.
 
+## Knowing where each token came from (and why it matters for taxes)
+
+Every token in the wallet remembers where it came from. **Think of it like a piggy bank that
+keeps the original deposit slip taped to each coin**: a quarter dropped in by Grandma at
+Christmas knows it's a gift; a quarter the kid earned doing chores knows it's earnings; the
+quarters look the same in the jar, but if you ever need to explain "where did the money come
+from?" — say to a parent, or to a tax authority — the slips are still there.
+
+This matters because different funding sources are treated differently for tax purposes. A
+customer who pays $25 cash to load their wallet and then spends $10 on a purchase is being taxed
+on the $10 sale, full stop. But a tenant who *gives* a customer $25 in promotional credit and
+then the customer spends $10 of it is in a different situation entirely — most jurisdictions
+treat the promotional credit as a discount that reduces the taxable basis of the sale, not as
+revenue. To file the right tax forms later, the system needs to know which of the spent tokens
+came from which kind of funding.
+
+The wallet handles this by tagging every funding and credit event with a category — customer
+cash, gift card, refund returned to wallet, tenant promotional grant, bug-fix compensation, or
+trial credit. When tokens get spent, the wallet records exactly which categories the spent
+tokens came from (oldest tokens go first — first in, first out — same as the gas in your car's
+tank). The full tax-aware reporting framework lands later (the wallet itself doesn't do tax math
+— that's a separate system being built next), but the *data* it needs is being captured now,
+because the events are immutable once recorded. Adding it later would require a painful
+ledger-wide migration; capturing it on day one is essentially free.
+
 ## Things to know
 
 This is the section to scan if you're operating the wallet in a real deployment.

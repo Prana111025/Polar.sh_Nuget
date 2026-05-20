@@ -12,6 +12,7 @@ namespace PolarSharp.PrepaidWallets.Abstractions.Events;
 /// <param name="IdempotencyKey">The originating command's idempotency key.</param>
 /// <param name="Amount">The tokens credited.</param>
 /// <param name="Reason">Free-form reason for the credit (PO id, ticket reference, etc.).</param>
+/// <param name="SourceKind">Tax-bucket category of the credited tokens. Drives the Phase 22.5 WTR framework's discount-vs-revenue classification.</param>
 /// <param name="RelatedPurchaseOrderId">Optional PO id when this credit consumes PO authorization.</param>
 public sealed record WalletCredited(
     WalletId WalletId,
@@ -21,6 +22,7 @@ public sealed record WalletCredited(
     IdempotencyKey IdempotencyKey,
     TokenAmount Amount,
     string Reason,
+    FundingSourceKind SourceKind,
     Option<Guid> RelatedPurchaseOrderId) : IWalletEvent
 {
     /// <inheritdoc/>

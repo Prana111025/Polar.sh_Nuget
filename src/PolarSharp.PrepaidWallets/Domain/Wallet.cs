@@ -1,6 +1,7 @@
 using PolarSharp.PrepaidWallets.Abstractions;
 using PolarSharp.PrepaidWallets.Abstractions.Commands;
 using PolarSharp.PrepaidWallets.Abstractions.Events;
+using PolarSharp.PrepaidWallets.Abstractions.Stores;
 
 namespace PolarSharp.PrepaidWallets.Domain;
 
@@ -19,13 +20,21 @@ namespace PolarSharp.PrepaidWallets.Domain;
 /// no commands on a closed wallet).
 /// </para>
 /// <para>
+/// The aggregate also tracks per-bucket FIFO state — each funding/credit event opens a bucket
+/// tagged with its <see cref="FundingSourceKind"/>; each debit spends from the oldest non-empty
+/// bucket first; the per-bucket breakdown is recorded on the <see cref="WalletDebited"/> event
+/// so the Phase 22.5 WTR tax framework can compute tax bucket-by-bucket. The buckets are part of
+/// aggregate state and snapshot alongside everything else.
+/// </para>
+/// <para>
 /// The class is <c>sealed</c> — invariants live here and nowhere else; subclassing would let a
-/// caller add a state change path that bypasses them.
+/// caller add a state-change path that bypasses them.
 /// </para>
 /// </remarks>
 public sealed class Wallet
 {
     private readonly HashSet<string> _seenIdempotencyKeys = new(StringComparer.Ordinal);
+    private readonly List<MutableBucket> _buckets = new();
 
     /// <summary>Build a not-yet-opened wallet — the zero state. Used by the command pipeline to apply the first event into.</summary>
     public Wallet()
@@ -61,7 +70,7 @@ public sealed class Wallet
     /// <param name="eventsAfterSnapshot">Events whose <see cref="IWalletEvent.SequenceNo"/> is strictly greater than the snapshot version.</param>
     /// <returns>A <see cref="Wallet"/> at the position of the last event applied.</returns>
     public static Wallet RehydrateFromSnapshot(
-        Abstractions.Stores.WalletSnapshot snapshot,
+        WalletSnapshot snapshot,
         IReadOnlyList<IWalletEvent> eventsAfterSnapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -79,6 +88,14 @@ public sealed class Wallet
             OpenedAt = snapshot.OpenedAt,
             LastActivityAt = snapshot.LastActivityAt,
         };
+
+        foreach (var bucket in snapshot.RemainingBuckets)
+        {
+            wallet._buckets.Add(new MutableBucket(
+                bucket.OriginatingFundingEventSequenceNo,
+                bucket.Kind,
+                bucket.RemainingTokens));
+        }
 
         foreach (var @event in eventsAfterSnapshot)
         {
@@ -124,6 +141,16 @@ public sealed class Wallet
 
     /// <summary>True iff the wallet has been opened (i.e. at least one event has been applied).</summary>
     public bool IsOpened => Version > 0;
+
+    /// <summary>
+    /// Current per-bucket FIFO state — non-empty buckets only, in funding-event sequence order.
+    /// Exposed so a host can introspect the breakdown of how the wallet's tokens are made up
+    /// (e.g. "what fraction of this wallet's $50 balance came from a tenant promotional grant?").
+    /// </summary>
+    public IReadOnlyList<FundingBucketState> Buckets => _buckets
+        .Where(b => b.Remaining > 0)
+        .Select(b => new FundingBucketState(b.SequenceNo, b.Kind, b.Remaining))
+        .ToArray();
 
     /// <summary>Try opening a brand-new wallet. Aggregate must be the zero-state value (no events applied).</summary>
     /// <param name="command">The open command.</param>
@@ -183,6 +210,7 @@ public sealed class Wallet
             command.Amount,
             command.BonusTokens,
             command.Source,
+            command.SourceKind,
             command.CustomerChargedAmountCents,
             command.ProcessorFeeCents,
             command.SaaSProfitCents,
@@ -195,7 +223,7 @@ public sealed class Wallet
     /// <summary>Try debiting the wallet.</summary>
     /// <param name="command">The debit command.</param>
     /// <param name="occurredAt">UTC timestamp from the calling pipeline.</param>
-    /// <returns>The new event, or a typed error.</returns>
+    /// <returns>The new event, or a typed error. The event carries a per-bucket <c>FundingSources</c> allocation computed via FIFO.</returns>
     public Result<IWalletEvent, CommandError> TryDebit(DebitWalletCommand command, DateTimeOffset occurredAt)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -216,6 +244,7 @@ public sealed class Wallet
                 new CommandError.InsufficientFunds(Balance, command.Amount));
         }
 
+        var allocations = AllocateFifo(command.Amount.Value);
         var newBalance = Balance - command.Amount;
         var @event = new WalletDebited(
             Id,
@@ -226,7 +255,8 @@ public sealed class Wallet
             command.Amount,
             command.TargetKind,
             command.TargetId,
-            newBalance);
+            newBalance,
+            allocations);
         return Result<IWalletEvent, CommandError>.Success(@event);
     }
 
@@ -253,6 +283,7 @@ public sealed class Wallet
             command.IdempotencyKey,
             command.Amount,
             command.Reason,
+            command.SourceKind,
             command.RelatedPurchaseOrderId);
         return Result<IWalletEvent, CommandError>.Success(@event);
     }
@@ -426,15 +457,26 @@ public sealed class Wallet
                 break;
             case WalletFunded funded:
                 Balance += funded.Amount + funded.BonusTokens;
+                var fundedTokens = funded.Amount.Value + funded.BonusTokens.Value;
+                if (fundedTokens > 0)
+                {
+                    _buckets.Add(new MutableBucket(funded.SequenceNo, funded.SourceKind, fundedTokens));
+                }
                 break;
             case WalletDebited debited:
                 Balance -= debited.Amount;
+                ConsumeBucketsForDebit(debited);
                 break;
             case WalletCredited credited:
                 Balance += credited.Amount;
+                if (credited.Amount.Value > 0)
+                {
+                    _buckets.Add(new MutableBucket(credited.SequenceNo, credited.SourceKind, credited.Amount.Value));
+                }
                 break;
             case WalletRefunded refunded:
                 Balance -= refunded.TokensRefunded;
+                ConsumeBucketsFifo(refunded.TokensRefunded.Value);
                 break;
             case WalletFrozen:
                 Status = WalletStatus.Frozen;
@@ -449,6 +491,93 @@ public sealed class Wallet
                 throw new ArgumentOutOfRangeException(
                     nameof(@event),
                     $"Unknown wallet event type '{@event.EventType}'.");
+        }
+    }
+
+    /// <summary>
+    /// Compute a FIFO allocation for an upcoming debit without mutating bucket state. Used by
+    /// <see cref="TryDebit"/> to fill the event's <c>FundingSources</c> field.
+    /// </summary>
+    private IReadOnlyList<FundingSourceAllocation> AllocateFifo(long tokensToSpend)
+    {
+        var allocations = new List<FundingSourceAllocation>();
+        var remaining = tokensToSpend;
+        foreach (var bucket in _buckets)
+        {
+            if (remaining == 0)
+            {
+                break;
+            }
+
+            if (bucket.Remaining == 0)
+            {
+                continue;
+            }
+
+            var take = Math.Min(remaining, bucket.Remaining);
+            allocations.Add(new FundingSourceAllocation(
+                bucket.Kind,
+                take,
+                Option<long>.Some(bucket.SequenceNo)));
+            remaining -= take;
+        }
+
+        if (remaining != 0)
+        {
+            throw new InvalidOperationException(
+                $"Bucket state is out of sync with balance: {remaining} tokens could not be allocated despite balance check passing.");
+        }
+
+        return allocations;
+    }
+
+    /// <summary>Consume buckets for a <see cref="WalletDebited"/> event using the event's recorded allocation list.</summary>
+    private void ConsumeBucketsForDebit(WalletDebited debited)
+    {
+        foreach (var allocation in debited.FundingSources)
+        {
+            if (!allocation.OriginatingFundingEventSequenceNo.TryGetValue(out var seqNo))
+            {
+                ConsumeBucketsFifo(allocation.Tokens);
+                continue;
+            }
+
+            var bucket = _buckets.FirstOrDefault(b => b.SequenceNo == seqNo);
+            if (bucket is null || bucket.Remaining < allocation.Tokens)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot apply WalletDebited sequence {debited.SequenceNo}: bucket {seqNo} is missing or has fewer than {allocation.Tokens} tokens.");
+            }
+
+            bucket.Remaining -= allocation.Tokens;
+        }
+    }
+
+    /// <summary>Consume <paramref name="tokens"/> from the FIFO bucket list. Used by refund replay.</summary>
+    private void ConsumeBucketsFifo(long tokens)
+    {
+        var remaining = tokens;
+        foreach (var bucket in _buckets)
+        {
+            if (remaining == 0)
+            {
+                break;
+            }
+
+            if (bucket.Remaining == 0)
+            {
+                continue;
+            }
+
+            var take = Math.Min(remaining, bucket.Remaining);
+            bucket.Remaining -= take;
+            remaining -= take;
+        }
+
+        if (remaining != 0)
+        {
+            throw new InvalidOperationException(
+                $"Bucket state is out of sync: {remaining} tokens could not be drained for a FIFO consume.");
         }
     }
 
@@ -474,5 +603,23 @@ public sealed class Wallet
 
         rejection = default;
         return false;
+    }
+
+    /// <summary>
+    /// Internal mutable bucket — the aggregate's working state for FIFO allocation. Exposed
+    /// outwards as immutable <see cref="FundingBucketState"/> via <see cref="Buckets"/>.
+    /// </summary>
+    private sealed class MutableBucket
+    {
+        public MutableBucket(long sequenceNo, FundingSourceKind kind, long remaining)
+        {
+            SequenceNo = sequenceNo;
+            Kind = kind;
+            Remaining = remaining;
+        }
+
+        public long SequenceNo { get; }
+        public FundingSourceKind Kind { get; }
+        public long Remaining { get; set; }
     }
 }

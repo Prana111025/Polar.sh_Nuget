@@ -59,12 +59,31 @@ events.
 | Event | When | Carries |
 |---|---|---|
 | `WalletOpened` | First event of every stream. | Customer id, tenant scope, currency. |
-| `WalletFunded` | Customer payment cleared. | Token amount + bonus, funding source, **full economic breakdown** (customer charged / processor fee / SaaS profit / tenant absorbed / tenant net, all in cents), plus the funding-terms JSON snapshot for dormancy / refund eligibility. |
-| `WalletDebited` | Order line / invoice / subscription tick paid from the wallet. | Token amount, free-form `TargetKind` + `TargetId`, resulting balance. |
-| `WalletCredited` | Non-funding credit (admin manual, PO grant, promo). | Token amount, free-form reason, optional related PO id. |
+| `WalletFunded` | Customer payment cleared. | Token amount + bonus, funding source (processor-level), **tax-bucket category** (`FundingSourceKind` — see below), **full economic breakdown** (customer charged / processor fee / SaaS profit / tenant absorbed / tenant net, all in cents), plus the funding-terms JSON snapshot for dormancy / refund eligibility. |
+| `WalletDebited` | Order line / invoice / subscription tick paid from the wallet. | Token amount, free-form `TargetKind` + `TargetId`, resulting balance, **per-bucket allocation list** (`FundingSources`) showing which tax-buckets supplied the spent tokens. |
+| `WalletCredited` | Non-funding credit (admin manual, PO grant, promo). | Token amount, free-form reason, **tax-bucket category** (`FundingSourceKind`), optional related PO id. |
 | `WalletRefunded` | Refund of a prior funding event. | Tokens refunded, original-funding sequence number, refunded-to-customer cents, surcharge cents, SaaS share cents. |
 | `WalletFrozen` / `WalletUnfrozen` | Operator suspends / resumes the wallet. | Free-form reason. |
 | `WalletClosed` | Terminal close. | Free-form reason. |
+
+## Funding-source provenance and FIFO bucket allocation
+
+Every `WalletFunded` and `WalletCredited` event tags its tokens with a
+`FundingSourceKind` — `CustomerCashFunded`, `GiftCardActivation`, `RefundAsCredit`,
+`TenantPromotionalGrant`, `TenantBugFixCompensation`, or `TrialCredit`. The aggregate tracks
+per-bucket remaining-token state and consumes buckets **FIFO** at debit time. Each `WalletDebited`
+event records a `FundingSources` list — one entry per bucket that contributed to the debit, with
+the token count and a back-reference to the originating funding/credit event's sequence number.
+
+This provenance is consumed by the Phase 22.5 Wallet Tax Responsibility (WTR) framework to
+compute tax bucket-by-bucket — cash-funded tokens are typically fully taxable on the new sale,
+whereas tenant-promotional tokens are often treated as discounts that reduce taxable basis.
+**The data must be recorded at debit time** — recomputing the breakdown from event history later
+isn't viable at scale, which is why these fields ship in Phase 20 even though their consumer
+arrives in Phase 22.5.
+
+Bucket state is included in `WalletSnapshot.RemainingBuckets` so a snapshot+delta load resumes
+FIFO allocation without re-reading the full event stream.
 
 Every event implements `IWalletEvent` and carries: `WalletId`, `SequenceNo`, `OccurredAt`,
 `ActorUserId`, `IdempotencyKey`, `EventType` discriminator. All events are immutable `sealed
@@ -133,16 +152,25 @@ The schema (declared in `WalletEventStoreDbContext.OnModelCreating`):
 
 ```
 wallet_events
-    id, wallet_id, sequence_no, event_type, event_payload_json,
+    id, wallet_id, tenant_id (nullable), sequence_no, event_type, event_payload_json,
     idempotency_key, occurred_at, actor_user_id
   UNIQUE (wallet_id, sequence_no)
   UNIQUE (wallet_id, idempotency_key)
+  INDEX  (tenant_id, occurred_at)  -- supports Phase 22.5 WTR tax-aggregation queries
 
 wallet_snapshots
     wallet_id, version, customer_id, tenant_id, currency,
-    balance_tokens, status_code, opened_at, last_activity_at, taken_at
+    balance_tokens, status_code, opened_at, last_activity_at, taken_at,
+    buckets_json
   PRIMARY KEY (wallet_id, version)
 ```
+
+The `tenant_id` column on `wallet_events` is **denormalized** — it's extracted from the
+`WalletOpened` event at append time and copied onto every subsequent event in the same stream.
+This avoids a join through the snapshot table for the Phase 22.5 tax-aggregation queries (which
+need to span every wallet of a tenant across an arbitrary date range). The Marten provider
+indexes `tenant_id` on the snapshot side; the event-side Marten tenant index is a Phase 21
+follow-up that requires a custom multi-stream projection.
 
 ## What's NOT in Phase 20
 

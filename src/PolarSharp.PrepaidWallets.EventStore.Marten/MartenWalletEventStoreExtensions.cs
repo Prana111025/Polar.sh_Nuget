@@ -44,6 +44,14 @@ public static class MartenWalletEventStoreExtensions
             opts.Events.AddEventType(typeof(WalletUnfrozen));
             opts.Events.AddEventType(typeof(WalletClosed));
             opts.RegisterDocumentType<MartenWalletSnapshotDocument>();
+
+            // Snapshot-side tenant index — enables fast "show me every tenant's wallet snapshots
+            // as-of right now" queries for the Phase 22.5 WTR framework. The event-side tenant
+            // index (cross-tenant event aggregation across date ranges) is a Phase 21 follow-up
+            // because Marten's events table needs a tenant_id projection set up explicitly via
+            // metadata or a custom multi-stream projection.
+            opts.Schema.For<MartenWalletSnapshotDocument>()
+                .Index(x => x.TenantId);
         });
 
         services.AddSingleton<IWalletEventStore, MartenWalletEventStore>();

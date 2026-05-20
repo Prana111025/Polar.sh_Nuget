@@ -130,6 +130,7 @@ public sealed class InMemoryWalletEventStore : IWalletEventStore
                     x.Amount == y.Amount
                         && x.BonusTokens == y.BonusTokens
                         && x.Source == y.Source
+                        && x.SourceKind == y.SourceKind
                         && x.CustomerChargedAmountCents == y.CustomerChargedAmountCents
                         && x.ProcessorFeeCents == y.ProcessorFeeCents
                         && x.SaaSProfitCents == y.SaaSProfitCents
@@ -142,6 +143,7 @@ public sealed class InMemoryWalletEventStore : IWalletEventStore
                 (WalletCredited x, WalletCredited y) =>
                     x.Amount == y.Amount
                         && x.Reason == y.Reason
+                        && x.SourceKind == y.SourceKind
                         && x.RelatedPurchaseOrderId == y.RelatedPurchaseOrderId,
                 (WalletRefunded x, WalletRefunded y) =>
                     x.TokensRefunded == y.TokensRefunded

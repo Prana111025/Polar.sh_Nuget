@@ -35,4 +35,11 @@ public sealed class WalletSnapshotRecord
 
     /// <summary>UTC timestamp the snapshot was taken.</summary>
     public DateTimeOffset TakenAt { get; set; }
+
+    /// <summary>
+    /// JSON-serialized list of <c>FundingBucketState</c> values — the per-bucket FIFO state at
+    /// snapshot time. Stored as JSON so the schema doesn't need a per-bucket child table; the
+    /// per-bucket projection happens in-memory at load time. Empty list serialized as "[]".
+    /// </summary>
+    public string BucketsJson { get; set; } = "[]";
 }

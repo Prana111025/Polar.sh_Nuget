@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using PolarSharp.PrepaidWallets.Abstractions;
 using PolarSharp.PrepaidWallets.Abstractions.Events;
+using PolarSharp.PrepaidWallets.Abstractions.Stores;
 
 namespace PolarSharp.PrepaidWallets.Serialization;
 
@@ -16,6 +17,7 @@ namespace PolarSharp.PrepaidWallets.Serialization;
     Converters = [
         typeof(OptionGuidJsonConverter),
         typeof(OptionStringJsonConverter),
+        typeof(OptionLongJsonConverter),
         typeof(IdempotencyKeyJsonConverter),
         typeof(WalletIdJsonConverter),
         typeof(TokenAmountJsonConverter),
@@ -29,9 +31,15 @@ namespace PolarSharp.PrepaidWallets.Serialization;
 [JsonSerializable(typeof(WalletUnfrozen))]
 [JsonSerializable(typeof(WalletClosed))]
 [JsonSerializable(typeof(FundingSource))]
+[JsonSerializable(typeof(FundingSourceKind))]
+[JsonSerializable(typeof(FundingSourceAllocation))]
+[JsonSerializable(typeof(IReadOnlyList<FundingSourceAllocation>))]
+[JsonSerializable(typeof(IReadOnlyList<FundingBucketState>))]
+[JsonSerializable(typeof(FundingBucketState))]
 [JsonSerializable(typeof(WalletId))]
 [JsonSerializable(typeof(TokenAmount))]
 [JsonSerializable(typeof(IdempotencyKey))]
 [JsonSerializable(typeof(Option<Guid>))]
 [JsonSerializable(typeof(Option<string>))]
+[JsonSerializable(typeof(Option<long>))]
 public sealed partial class WalletJsonContext : JsonSerializerContext;

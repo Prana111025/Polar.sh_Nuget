@@ -38,6 +38,35 @@ public sealed class OptionGuidJsonConverter : JsonConverter<Option<Guid>>
     }
 }
 
+/// <summary>AOT-safe JSON converter for <see cref="Option{T}"/> of <see cref="long"/>. None = JSON null.</summary>
+public sealed class OptionLongJsonConverter : JsonConverter<Option<long>>
+{
+    /// <inheritdoc/>
+    public override Option<long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return Option<long>.None;
+        }
+
+        return Option<long>.Some(reader.GetInt64());
+    }
+
+    /// <inheritdoc/>
+    public override void Write(Utf8JsonWriter writer, Option<long> value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+
+        if (!value.HasValue)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        writer.WriteNumberValue(value.Value);
+    }
+}
+
 /// <summary>AOT-safe JSON converter for <see cref="Option{T}"/> of <see cref="string"/>.</summary>
 public sealed class OptionStringJsonConverter : JsonConverter<Option<string>>
 {

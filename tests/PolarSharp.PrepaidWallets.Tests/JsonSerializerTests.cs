@@ -38,6 +38,7 @@ public sealed class JsonSerializerTests
             new TokenAmount(25_000),
             new TokenAmount(2_500),
             FundingSource.Polar("order_test"),
+            FundingSourceKind.CustomerCashFunded,
             CustomerChargedAmountCents: 25_000,
             ProcessorFeeCents: 750,
             SaaSProfitCents: 500,
@@ -49,6 +50,7 @@ public sealed class JsonSerializerTests
         Assert.Equal(original.Amount, rt.Amount);
         Assert.Equal(original.BonusTokens, rt.BonusTokens);
         Assert.Equal(original.Source, rt.Source);
+        Assert.Equal(original.SourceKind, rt.SourceKind);
         Assert.Equal(original.CustomerChargedAmountCents, rt.CustomerChargedAmountCents);
         Assert.Equal(original.ProcessorFeeCents, rt.ProcessorFeeCents);
         Assert.Equal(original.FundingTermsSnapshotJson, rt.FundingTermsSnapshotJson);
@@ -58,12 +60,14 @@ public sealed class JsonSerializerTests
     public void Every_event_kind_has_a_registered_discriminator()
     {
         var id = WalletId.NewId();
+        IReadOnlyList<FundingSourceAllocation> allocations =
+            new[] { new FundingSourceAllocation(FundingSourceKind.CustomerCashFunded, 1, Option<long>.Some(2)) };
         IWalletEvent[] events =
         [
             new WalletOpened(id, 1, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("o"), WalletFixture.Customer, Option<Guid>.None, "USD"),
-            new WalletFunded(id, 2, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("f"), new TokenAmount(1), TokenAmount.Zero, FundingSource.Manual("m"), 0,0,0,0,0, "{}"),
-            new WalletDebited(id, 3, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("d"), new TokenAmount(1), "k", "i", TokenAmount.Zero),
-            new WalletCredited(id, 4, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("c"), new TokenAmount(1), "r", Option<Guid>.None),
+            new WalletFunded(id, 2, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("f"), new TokenAmount(1), TokenAmount.Zero, FundingSource.Manual("m"), FundingSourceKind.CustomerCashFunded, 0,0,0,0,0, "{}"),
+            new WalletDebited(id, 3, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("d"), new TokenAmount(1), "k", "i", TokenAmount.Zero, allocations),
+            new WalletCredited(id, 4, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("c"), new TokenAmount(1), "r", FundingSourceKind.TenantPromotionalGrant, Option<Guid>.None),
             new WalletRefunded(id, 5, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("r"), new TokenAmount(1), 2, 0, 0, 0),
             new WalletFrozen(id, 6, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("fz"), "reason"),
             new WalletUnfrozen(id, 7, WalletFixture.At, WalletFixture.Actor, WalletFixture.Key("uf")),

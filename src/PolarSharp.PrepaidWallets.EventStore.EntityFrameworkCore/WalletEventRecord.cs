@@ -21,6 +21,13 @@ public sealed class WalletEventRecord
     /// <summary>Foreign key into <c>wallet_snapshots.wallet_id</c>.</summary>
     public Guid WalletId { get; set; }
 
+    /// <summary>
+    /// Tenant scope of the wallet, denormalized onto every event row so the Phase 22.5 WTR
+    /// tax-aggregation queries can index on <c>(tenant_id, occurred_at)</c> without joining
+    /// through the snapshot table. <see langword="null"/> in single-tenant deployments.
+    /// </summary>
+    public Guid? TenantId { get; set; }
+
     /// <summary>Position in the wallet's stream. Unique with <see cref="WalletId"/>.</summary>
     public long SequenceNo { get; set; }
 

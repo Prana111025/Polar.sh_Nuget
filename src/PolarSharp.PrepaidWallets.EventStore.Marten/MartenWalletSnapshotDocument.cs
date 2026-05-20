@@ -40,6 +40,9 @@ public sealed class MartenWalletSnapshotDocument
     /// <summary>UTC timestamp the snapshot was taken.</summary>
     public DateTimeOffset TakenAt { get; set; }
 
+    /// <summary>Per-bucket FIFO state at snapshot time. Marten serializes this list with the rest of the document.</summary>
+    public IReadOnlyList<FundingBucketState> RemainingBuckets { get; set; } = Array.Empty<FundingBucketState>();
+
     /// <summary>Convert from a domain <see cref="WalletSnapshot"/>.</summary>
     /// <param name="snapshot">The domain snapshot.</param>
     public static MartenWalletSnapshotDocument FromSnapshot(WalletSnapshot snapshot)
@@ -57,6 +60,7 @@ public sealed class MartenWalletSnapshotDocument
             OpenedAt = snapshot.OpenedAt,
             LastActivityAt = snapshot.LastActivityAt,
             TakenAt = snapshot.TakenAt,
+            RemainingBuckets = snapshot.RemainingBuckets,
         };
     }
 
@@ -72,5 +76,6 @@ public sealed class MartenWalletSnapshotDocument
             Status,
             OpenedAt,
             LastActivityAt,
-            TakenAt);
+            TakenAt,
+            RemainingBuckets);
 }

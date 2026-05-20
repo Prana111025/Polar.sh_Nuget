@@ -33,6 +33,11 @@ public interface IWalletSnapshotStore
 /// <param name="OpenedAt">UTC timestamp of the <c>WalletOpened</c> event.</param>
 /// <param name="LastActivityAt">UTC timestamp of the most recent event at snapshot time.</param>
 /// <param name="TakenAt">UTC timestamp the snapshot was taken.</param>
+/// <param name="RemainingBuckets">
+/// Per-bucket FIFO state at snapshot time. The list is in funding-event sequence order (oldest
+/// first) so a snapshot+delta load resumes spending oldest tokens first without re-reading the
+/// full event stream. Zero-remaining buckets are omitted.
+/// </param>
 public sealed record WalletSnapshot(
     WalletId WalletId,
     long Version,
@@ -43,4 +48,5 @@ public sealed record WalletSnapshot(
     WalletStatus Status,
     DateTimeOffset OpenedAt,
     DateTimeOffset LastActivityAt,
-    DateTimeOffset TakenAt);
+    DateTimeOffset TakenAt,
+    IReadOnlyList<FundingBucketState> RemainingBuckets);

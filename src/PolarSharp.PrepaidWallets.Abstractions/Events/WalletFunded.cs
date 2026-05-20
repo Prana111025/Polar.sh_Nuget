@@ -26,7 +26,8 @@ namespace PolarSharp.PrepaidWallets.Abstractions.Events;
 /// <param name="IdempotencyKey">The originating command's idempotency key.</param>
 /// <param name="Amount">The tokens credited to the wallet (face value).</param>
 /// <param name="BonusTokens">Promotional bonus tokens credited (0 when no bonus applies).</param>
-/// <param name="Source">Which funding processor delivered the payment.</param>
+/// <param name="Source">Which funding processor delivered the payment (processor-level provenance).</param>
+/// <param name="SourceKind">Tax-bucket category of the tokens being credited (semantic provenance). Consumed by the Phase 22.5 WTR framework.</param>
 /// <param name="CustomerChargedAmountCents">What was charged to the customer's payment instrument, in cents.</param>
 /// <param name="ProcessorFeeCents">What the funding processor (Polar / Stripe / PayPal) took, in cents.</param>
 /// <param name="SaaSProfitCents">What the SaaS platform took, in cents.</param>
@@ -42,6 +43,7 @@ public sealed record WalletFunded(
     TokenAmount Amount,
     TokenAmount BonusTokens,
     FundingSource Source,
+    FundingSourceKind SourceKind,
     int CustomerChargedAmountCents,
     int ProcessorFeeCents,
     int SaaSProfitCents,

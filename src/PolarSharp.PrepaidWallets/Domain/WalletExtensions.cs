@@ -24,7 +24,8 @@ public static class WalletExtensions
             wallet.Status,
             wallet.OpenedAt,
             wallet.LastActivityAt,
-            takenAt);
+            takenAt,
+            wallet.Buckets);
     }
 
     /// <summary>Project the aggregate to the read-model view used by queries.</summary>
