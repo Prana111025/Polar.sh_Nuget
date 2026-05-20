@@ -7,7 +7,7 @@
     <!-- Marked IsPackable=false 2026-05-19: package has zero hand-written source files. Flip back to true once the v1.4.0 implementation lands so the empty assembly never reaches a NuGet feed. -->
     <IsPackable>false</IsPackable>
     <Authors>Molls and Hersh, LLC</Authors>
-    <Description>Meilisearch provider for IStorefrontSearchProvider.</Description>
+    <Description>[DEPRECATED 2026-05-20] Meilisearch provider for IStorefrontSearchProvider. New deployments should prefer PolarSharp.EcommerceStorefronts.Search.Elasticsearch (Docker-hostable big-name OSS) or PolarSharp.EcommerceStorefronts.Search.AzureAiSearch (cloud big-name). This package is kept for back-compat with existing references but will not receive an implementation.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/mollsandhersh/Polar.sh_Nuget</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mollsandhersh/Polar.sh_Nuget</RepositoryUrl>

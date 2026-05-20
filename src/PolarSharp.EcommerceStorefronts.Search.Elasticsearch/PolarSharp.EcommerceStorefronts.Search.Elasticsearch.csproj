@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsLibrary>true</IsLibrary>
+    <PackageId>PolarSharp.EcommerceStorefronts.Search.Elasticsearch</PackageId>
+    <Version>1.0.0</Version>
+    <!-- Marked IsPackable=false 2026-05-20: package body is a scaffold; real implementation lands in a follow-up phase (TASK-V14-???.search-elasticsearch). Flip back to true when implementation lands so the empty assembly never reaches NuGet. -->
+    <IsPackable>false</IsPackable>
+    <Authors>Molls and Hersh, LLC</Authors>
+    <Description>Elasticsearch / OpenSearch provider for IStorefrontSearchProvider. Docker-hostable big-name OSS option — runs `elasticsearch:8` or `opensearchproject/opensearch:2` next to your app; mature ecosystem, rich faceted search + typo-tolerance + multi-language analyzers.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mollsandhersh/Polar.sh_Nuget</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mollsandhersh/Polar.sh_Nuget</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>polar;ecommerce;storefronts;search;elasticsearch;opensearch;saas</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RootNamespace>PolarSharp.EcommerceStorefronts.Search.Elasticsearch</RootNamespace>
+    <NoWarn>CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PolarSharp.EcommerceStorefronts.Search\PolarSharp.EcommerceStorefronts.Search.csproj" />
+    <!-- Vendor SDK reference added when implementation lands. Elastic.Clients.Elasticsearch (8.x) is the canonical .NET client. OpenSearch fork uses OpenSearch.Client. Decision TBD at impl time. -->
+  </ItemGroup>
+
+</Project>

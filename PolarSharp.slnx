@@ -92,7 +92,11 @@
     <Project Path="src/PolarSharp.EcommerceStorefronts.SEO.Images.Cloudflare/PolarSharp.EcommerceStorefronts.SEO.Images.Cloudflare.csproj" />
     <Project Path="src/PolarSharp.EcommerceStorefronts.SEO.Images.Imgix/PolarSharp.EcommerceStorefronts.SEO.Images.Imgix.csproj" />
     <Project Path="src/PolarSharp.EcommerceStorefronts.Search/PolarSharp.EcommerceStorefronts.Search.csproj" />
+    <Project Path="src/PolarSharp.EcommerceStorefronts.Search.AzureAiSearch/PolarSharp.EcommerceStorefronts.Search.AzureAiSearch.csproj" />
+    <Project Path="src/PolarSharp.EcommerceStorefronts.Search.Elasticsearch/PolarSharp.EcommerceStorefronts.Search.Elasticsearch.csproj" />
     <Project Path="src/PolarSharp.EcommerceStorefronts.Search.MeiliSearch/PolarSharp.EcommerceStorefronts.Search.MeiliSearch.csproj" />
+    <Project Path="src/PolarSharp.EcommerceStorefronts.Search.PostgreSql/PolarSharp.EcommerceStorefronts.Search.PostgreSql.csproj" />
+    <Project Path="src/PolarSharp.EcommerceStorefronts.Search.Sqlite/PolarSharp.EcommerceStorefronts.Search.Sqlite.csproj" />
     <Project Path="src/PolarSharp.EcommerceStorefronts.Shipping/PolarSharp.EcommerceStorefronts.Shipping.csproj" />
     <Project Path="src/PolarSharp.EcommerceStorefronts.Shipping.EasyPost/PolarSharp.EcommerceStorefronts.Shipping.EasyPost.csproj" />
     <Project Path="src/PolarSharp.EcommerceStorefronts.Shipping.Shippo/PolarSharp.EcommerceStorefronts.Shipping.Shippo.csproj" />

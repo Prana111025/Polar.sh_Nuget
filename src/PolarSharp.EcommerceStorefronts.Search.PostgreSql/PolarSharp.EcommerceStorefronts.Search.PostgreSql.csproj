@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsLibrary>true</IsLibrary>
+    <PackageId>PolarSharp.EcommerceStorefronts.Search.PostgreSql</PackageId>
+    <Version>1.0.0</Version>
+    <!-- Marked IsPackable=false 2026-05-20: package body is a scaffold; real implementation lands in a follow-up phase (TASK-V14-???.search-postgresql). Flip back to true when implementation lands so the empty assembly never reaches NuGet. -->
+    <IsPackable>false</IsPackable>
+    <Authors>Molls and Hersh, LLC</Authors>
+    <Description>PostgreSQL tsvector/tsquery provider for IStorefrontSearchProvider. For tenants already running Postgres — search runs against the same database as the catalog; no separate search service required.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mollsandhersh/Polar.sh_Nuget</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mollsandhersh/Polar.sh_Nuget</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>polar;ecommerce;storefronts;search;postgresql;tsvector;saas</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RootNamespace>PolarSharp.EcommerceStorefronts.Search.PostgreSql</RootNamespace>
+    <NoWarn>CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PolarSharp.EcommerceStorefronts.Search\PolarSharp.EcommerceStorefronts.Search.csproj" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+</Project>

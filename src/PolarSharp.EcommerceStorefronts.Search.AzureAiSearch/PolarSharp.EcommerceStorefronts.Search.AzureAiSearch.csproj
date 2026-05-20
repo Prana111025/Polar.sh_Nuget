@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsLibrary>true</IsLibrary>
+    <PackageId>PolarSharp.EcommerceStorefronts.Search.AzureAiSearch</PackageId>
+    <Version>1.0.0</Version>
+    <!-- Marked IsPackable=false 2026-05-20: package body is a scaffold; real implementation lands in a follow-up phase (TASK-V14-???.search-azureaisearch). Flip back to true when implementation lands so the empty assembly never reaches NuGet. -->
+    <IsPackable>false</IsPackable>
+    <Authors>Molls and Hersh, LLC</Authors>
+    <Description>Azure AI Search provider for IStorefrontSearchProvider. Microsoft's managed full-text + vector search service. Pairs naturally with Azure OpenAI (already shipped as Translation.AzureOpenAI) for end-to-end AI-driven product discovery.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mollsandhersh/Polar.sh_Nuget</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mollsandhersh/Polar.sh_Nuget</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>polar;ecommerce;storefronts;search;azure;cognitive-search;vector;semantic;saas</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RootNamespace>PolarSharp.EcommerceStorefronts.Search.AzureAiSearch</RootNamespace>
+    <NoWarn>CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PolarSharp.EcommerceStorefronts.Search\PolarSharp.EcommerceStorefronts.Search.csproj" />
+    <!-- Vendor SDK reference added when implementation lands. Azure.Search.Documents is the canonical .NET client. -->
+  </ItemGroup>
+
+</Project>
