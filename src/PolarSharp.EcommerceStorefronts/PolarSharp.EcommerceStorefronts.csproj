@@ -13,7 +13,6 @@
     <PackageTags>polar;ecommerce;storefronts;saas;aot</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RootNamespace>PolarSharp.EcommerceStorefronts</RootNamespace>
-    <NoWarn>CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
