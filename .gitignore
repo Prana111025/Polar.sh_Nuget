@@ -46,3 +46,9 @@ coverage/
 
 # Benchmarks output
 BenchmarkDotNet.Artifacts/
+
+# Per-agent prompt files used to bootstrap sibling-worktree Claude Code sessions
+# (see AGENT-COORDINATION.md). They live in the MAIN worktree's .agent-prompts/
+# directory and are gitignored so they don't pollute agent feature branches
+# (the .gitignore is shared across all worktrees of this repo).
+.agent-prompts/
