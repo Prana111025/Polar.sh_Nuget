@@ -67,7 +67,14 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Integration tests (live Polar sandbox)
-        run: dotnet test tests/PolarSharp.IntegrationTests --configuration Release --no-build --filter "Category=Integration"
+        # The Layer 2 live-sandbox tests live in the package-specific test projects
+        # (EcommerceStoreManagement.Tests for V20-002/003/004 + Reporting.Tests for V20-005's
+        # 13 endpoint tests). The PolarSharp.IntegrationTests project has zero
+        # Category=Integration tests; do NOT include it in this filter.
+        # See TESTING.md § "How CI runs the tests" for the four-layer rationale.
+        run: |
+          dotnet test tests/PolarSharp.EcommerceStoreManagement.Tests --configuration Release --no-build --filter "Category=Integration"
+          dotnet test tests/PolarSharp.Reporting.Tests --configuration Release --no-build --filter "Category=Integration"
         env:
           POLAR_SANDBOX_TOKEN: ${{ secrets.POLAR_SANDBOX_TOKEN }}
 
