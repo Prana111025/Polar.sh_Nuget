@@ -8,7 +8,13 @@ This repository will contain a .NET NuGet package integrating with [Polar.sh](ht
 
 ## Required Reading Order
 
-Before doing any work, read these files (from the home directory `/Users/mollsandhersh/`):
+Before doing any work, read these files in order:
+
+**Project-rooted (in this repo at `/Users/mollsandhersh/Repos/Polar.sh_Nuget/`):**
+
+0. **`LARGE-PROJECT-BEST-PRACTICES.md`** ⭐ READ FIRST — the methodology white paper. Codifies patterns, anti-patterns (the Trap Catalog), tool decision trees, agentic-AI-specific protocols, and reusable templates developed during the 2026-05-19 architecture session. Contains the Quick-Reference Card at the top (Top 10 patterns + Top 10 anti-patterns) for fast cold-start scanning. Mandatory reading for both human contributors AND agentic AI sessions.
+
+**From the home directory `/Users/mollsandhersh/`:**
 
 1. `AGENTS.md` — workflow rules, agentic-master policy, RAG policy
 2. `PLAN.md` — active technical plan
