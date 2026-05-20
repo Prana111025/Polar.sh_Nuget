@@ -6,11 +6,14 @@ Authoritative progress log. Record completed tasks, verification results, RAG in
 
 ## 2026-05-20 — Post-v1.3.0 reconciliation + audit pass
 
-### Current state on `main`
+### Current state on `main` (after the 2026-05-20 testing overhaul)
 
-- **Tip:** `508c8e4` (Merge PR #4 — wallet Phase 20 event store)
+- **Tip:** post-overhaul (see git log; the audit pass + testing overhaul commits)
 - **Build:** `dotnet build PolarSharp.slnx -c Release` → 0 warnings, 0 errors across 103 src projects
-- **Test suite:** **1163 passing, 8 skipped, 0 failed** across 24 test projects (full slnx-wide `dotnet test`). The 8 skipped tests live in `CosmosDbSingleTenantUpgradeMigratorIntegrationTests.cs` and use the `[SkippableFact]` "skip-on-emulator-failure" pattern when the Cosmos Linux emulator can't boot locally.
+- **Test suite:** **1164 passing, 13 skipped, 0 failed** across 25 test projects (full slnx-wide `dotnet test`).
+  - Net delta from the pre-overhaul baseline (1163/8/0): +2 scaffold integrity tests, –1 deleted `UnitTest1.cs` placeholder in `PolarSharp.IntegrationTests`, +5 new `LiveProviderIntegrationTests.cs` covering all 5 AI translation providers.
+  - Of the 13 skipped: 8 are `CosmosDbSingleTenantUpgradeMigratorIntegrationTests` (`[SkippableFact]` when Cosmos emulator unavailable) and 5 are the new AI provider live tests (`[SkippableFact]` until project owner supplies credentials — TASK-V14-007).
+- **Honest reporting note:** as of this overhaul, "Passed" actually means "ran and passed." Previously, ~16 live-Polar sandbox tests silently no-op'd when `POLAR_SANDBOX_TOKEN` was unset and reported as Passed — those are now SkippableFact-gated and report as Skipped honestly. See `TESTING.md` for the full breakdown.
 
 ### Realignment of stale planning docs
 

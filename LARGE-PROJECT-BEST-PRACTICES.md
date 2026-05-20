@@ -343,6 +343,31 @@ Specific lessons from the 2026-05-19 session, captured so we don't repeat them.
 
 **Lesson:** When transcribing prose → code, the compiler catches inconsistencies you didn't notice in prose. Trust the code-as-source-of-truth audit.
 
+### Mistake 8 (2026-05-20): Treated passing test counts as proof of functionality
+
+**What happened:** During a "what works vs what doesn't" audit, claimed the v1.3.0 service surface was largely "Tier A — fully functional, end-to-end works." Cited 1163/1163 tests passing as evidence. The user pushed back: "Do the unit tests, integration tests, and regression tests fully reflect/bare-out your findings?"
+
+**What investigation surfaced:**
+- ~16 live-Polar "integration" tests used `if (string.IsNullOrEmpty(Token)) return;` and reported as **Passed** when `POLAR_SANDBOX_TOKEN` was unset. Silent-skip looks identical to silent-pass at the test runner level.
+- CI's "Integration Tests (sandbox)" job ran `dotnet test tests/PolarSharp.IntegrationTests --filter Category=Integration` — but that project has zero `Category=Integration` tests. CI logged "No test matches the given testcase filter" and exited green having run zero tests. The integration job had been a no-op for an extended period.
+- TASKS.md still listed V20-002/003/004 as "Deferred → v2.0" while the code actually shipped + had live-sandbox tests; CHANGELOG was correct, TASKS.md was stale. The doc drift mislead me into thinking those features were stubs.
+- ~17 packages had `<IsPackable>true</IsPackable>` (the default) but their bodies were no-op extension methods with XML doc explicitly saying "Phase X.x ships the registration scaffold; the full impl lands in Phase X.y." These would silently ship empty NuGet packages on any tag.
+
+**Fix (2026-05-20 testing overhaul):**
+- Converted silent-skip to `[SkippableFact]` + `Skip.If(...)` across 16 test classes — green now means actually-ran-and-passed; honest reporting is enforced.
+- Fixed CI Integration job to target the two test projects that own the live tests (`EcommerceStoreManagement.Tests` + `Reporting.Tests`).
+- Added `ScaffoldIntegrityTests` — a structural test that enumerates every `IsPackable=false` package and asserts ≤3 hand-written `.cs` files. When a contributor adds real code without dropping the IsPackable flag, this fails loudly.
+- Marked 17 packable-but-scaffold packages as `IsPackable=false` so they can't ship empty.
+- Closed TASKS.md V20-002/003/004 to match code reality.
+- Wrote TESTING.md documenting the four test layers, the silent-skip gotcha, and which classes prove what.
+
+**Lessons:**
+1. **Passing tests prove what they assert; nothing more.** A test that early-returns on a missing env var asserts nothing. Count the tests that actually executed, not the tests that reported Passed.
+2. **CI green doesn't mean CI ran.** Workflow filter syntax that matches zero tests exits successfully with a misleading message. Always verify the test count printed by the CI log matches the test count you expected.
+3. **Audit YOUR audits.** When asked "what works?" the source-inspection answer can mislead. Running the actual tests with `dotnet test` + reading the test source + checking the project filters is the real audit. Documentation will drift; code + tests are ground truth.
+4. **Doc drift is silent until tested.** TASKS.md said V20-002 was "Deferred." Code said it was shipped. Without cross-referencing both against the actual source, the drift compounds.
+5. **The scaffold integrity invariant has to be tested, not just documented.** `<IsPackable>false</IsPackable>` is a comment to humans; only a test that walks the csproj files turns it into a checked contract.
+
 ---
 
 ## Trap pattern catalog (enumerated anti-patterns)
@@ -448,6 +473,36 @@ These are the recurring failure modes the methodology defends against. Recognize
 **Detection:** When user offers to defer, ask: "is the reframe actually better than the current direction?"
 
 **Avoidance:** Consider the reframe seriously. Push back on auto-defer when the reframe wins. User-redirects-are-signal applies to "willing to defer" prompts too.
+
+### Trap 11: Silent-skip in env-gated tests reads as Passed (2026-05-20)
+
+**Shape:** A test that needs a credential (sandbox token, API key, connection string) is gated with `if (string.IsNullOrEmpty(Token)) return;`. Without the credential the method returns without asserting; xUnit reports it as Passed.
+
+**Failure mode:** A green test count is meaningless. On machines without the credential, the audit-relevant tests are NOT running, but `dotnet test` returns "Passed!" anyway. Code review of test code looks correct; the trap is in the runner's interpretation of a no-op method.
+
+**Detection:** Grep for `if (string.IsNullOrEmpty(*token*)) return` and `Environment.GetEnvironmentVariable(...) == null) return`. Each occurrence is a silent-skip.
+
+**Avoidance:** Use `[SkippableFact]` + `Skip.If(condition, reason)` from `Xunit.SkippableFact`. The test reports as Skipped (not Passed) when the gate trips, so the runner output honestly reflects what executed. Audit-fix 2026-05-20 converted 32 occurrences across 16 files.
+
+### Trap 12: CI workflow filter pointing at the wrong test project (2026-05-20)
+
+**Shape:** A workflow step runs `dotnet test path/to/Project --filter "Category=X"` against a project that has zero `Category=X` tagged tests. The step exits successfully having run zero tests and logs the misleading message `No test matches the given testcase filter`.
+
+**Failure mode:** CI reports green on a job that's testing nothing. Audit-found instance: `tests/PolarSharp.IntegrationTests` had zero `Category=Integration` tagged tests; the 16+ actual integration tests lived in two other projects. The CI Integration step had been a no-op for many weeks.
+
+**Detection:** After every CI run that includes a filtered test step, count the tests printed in the runner output. Zero is a smell; investigate before merging anything that depends on the step's pass/fail.
+
+**Avoidance:** Run the same filter locally before committing the workflow change. Or assert non-zero test count in the workflow itself (e.g., pipe through `tee` + `grep "Passed:" log | grep -v "Passed:     0"`).
+
+### Trap 13: Source inspection lies about runtime behavior (2026-05-20)
+
+**Shape:** Auditing functional state by reading source code without running it. A `PolarClientXxxApi` class with a "TASK-V20-XXX: deferred" marker in a stub method might be the OLD stub; the real one could exist in a different file. A README claiming "real impl in v1.4.0" might be aspirational doc that contradicts the actual code. The audit conclusions are wrong in either direction.
+
+**Failure mode:** Audit reports "Tier A: fully functional" for code that actually throws on call (overclaim), OR "Tier B: stubbed" for code that's actually wired (underclaim). Either way the project owner gets a misleading picture.
+
+**Detection:** When the audit conclusion is consequential (release readiness, "what works"), validate it by running the tests against the live external surface, not just by reading the source.
+
+**Avoidance:** For "what works" audits, run `dotnet test` with the relevant credentials present. Diff the runner output against the audit-claimed state. Any discrepancy is a bug in the audit. Mistake #8 captures this exact failure mode.
 
 ---
 

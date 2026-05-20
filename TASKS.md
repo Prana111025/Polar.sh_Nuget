@@ -19,32 +19,29 @@ The v1.2.0 release ships 25 new packages, 12 migration sets, and 441/441 passing
 - **What to do:** Implement the live HTTP path using `PolarClient.Organizations`, `PolarClient.OrganizationAccessTokens`, `PolarClient.Webhooks`, `PolarClient.Products`, `PolarClient.Benefits`, `PolarClient.Discounts`, `PolarClient.CheckoutLinks`. Honor idempotency via persisted `PolarProductId`/`PolarBenefitId`/etc. Wire variant + tier expansion, dependency order, partial-failure resume.
 - **Acceptance:** Integration test (sandbox) seeds 10 products with variants and tiers, publishes successfully, re-publish is a no-op, simulated network drop mid-publish resumes from `OutOfSync` correctly.
 
-### TASK-V20-002 — Wire IRefundService to Polar /v1/refunds
+### TASK-V20-002 — Wire IRefundService to Polar /v1/refunds ✅ DONE
 
-- **Status:** Deferred → v2.0
-- **Owner:** unassigned
-- **Project:** PolarSharp.EcommerceStoreManagement
-- **Context:** Full and partial refund APIs are defined and audit-log integrated; stub returns `Stubbed` outcome.
-- **What to do:** Replace stub in `IssueFullRefundAsync` / `IssuePartialRefundAsync` / `ListForOrderAsync` with calls through `PolarClient.Refunds`.
-- **Acceptance:** Integration test against Polar sandbox: create order → issue partial refund → list refunds shows it → issue second partial → totals reconcile.
+- **Status:** ✅ Done — wired against `https://sandbox-api.polar.sh` and validated by live-sandbox integration tests.
+- **Project:** PolarSharp.EcommerceStoreManagement.EntityFrameworkCore
+- **What landed:** `PolarClientRefundsApi` calls `POST /v1/refunds/` and `GET /v1/refunds/?order_id=…` via the Kiota-generated `PolarClient`. Happy-path mapping (`RefundCreate` → `Refund`) is end-to-end. Error mapping uses HTTP status to discriminate: 404 → `OrderNotFound`, 400 → `AmountExceedsRefundable` / `AlreadyFullyRefunded` / `CurrencyMismatch` (via response body parsing), 5xx → `UnexpectedFailure`. Unknown-shape bodies fall back to `UnexpectedFailure` so callers always see a typed error.
+- **Tests:** `tests/PolarSharp.EcommerceStoreManagement.Tests/PolarClientRefundsApiIntegrationTests.cs` carries `[Trait("Category","Integration")]` live-sandbox tests gated on `POLAR_SANDBOX_TOKEN`. Service-level logic (`RefundService`) covered by unit tests against a fake `IPolarRefundsApi`.
+- **Closure note:** TASKS.md previously marked this "Deferred to v2.0" — that status was stale. The code shipped under V20-002 with sandbox validation. Status corrected during the 2026-05-20 audit pass.
 
-### TASK-V20-003 — Wire ILicenseKeyValidator to Polar /v1/license-keys/{id}/validate
+### TASK-V20-003 — Wire ILicenseKeyValidator to Polar /v1/license-keys/{id}/validate ✅ DONE
 
-- **Status:** Deferred → v2.0
-- **Owner:** unassigned
-- **Project:** PolarSharp.EcommerceStoreManagement
-- **Context:** Caching, grace-period semantics, and `[RequireValidLicense]` filter are in place; the actual Polar call is stubbed.
-- **What to do:** Replace stub with `PolarClient.LicenseKeys` validate call. Map response to `LicenseValidationResult`.
-- **Acceptance:** Integration test validates a real sandbox license key, asserts cache hit on second call, asserts grace-period detection for expired keys.
+- **Status:** ✅ Done — wired against `https://sandbox-api.polar.sh` and validated by live-sandbox integration tests.
+- **Project:** PolarSharp.EcommerceStoreManagement.EntityFrameworkCore
+- **What landed:** `PolarClientLicenseKeysApi` calls `POST /v1/license-keys/{id}/validate` via `PolarClient`. Response maps to `LicenseValidationResult` with `IsValid`, `CustomerId`, `ExpiresAt`, `ActivationsRemaining`, `InvalidReason`, `IsWithinGracePeriod`. Cache TTL (default 60s) + grace-period detection (per-tenant override or global 7 days) handled at the `LicenseKeyValidator` orchestrator layer.
+- **Tests:** `tests/PolarSharp.EcommerceStoreManagement.Tests/PolarClientLicenseKeysApiIntegrationTests.cs` — live-sandbox tests gated on `POLAR_SANDBOX_TOKEN`. Validator-level caching + grace-period logic covered by unit tests against a fake.
+- **Closure note:** Same as V20-002 — TASKS.md status was stale. Corrected 2026-05-20.
 
-### TASK-V20-004 — Wire IPolarBusinessProfileService.SaveAsync to Polar Organizations PATCH
+### TASK-V20-004 — Wire IPolarBusinessProfileService.SaveAsync to Polar Organizations PATCH ✅ DONE
 
-- **Status:** Deferred → v2.0
-- **Owner:** unassigned
-- **Project:** PolarSharp.EcommerceStoreManagement
-- **Context:** Local persistence of `TenantBusinessProfile` works; writable fields (country, currency, tax behavior, OrganizationDetails) currently stay local only.
-- **What to do:** On `SaveAsync`, PATCH the writable subset to `PolarClient.Organizations`. Read-back `account_id`/`payout_account_id` and update local mirror. Also wire `RefreshPayoutStatusAsync` to live polling.
-- **Acceptance:** Integration test saves profile, asserts Polar org reflects country/currency/tax behavior change. Payout poller transitions `NotStarted → InProgress → Ready` correctly against sandbox.
+- **Status:** ✅ Done — wired against `https://sandbox-api.polar.sh` and validated by live-sandbox integration tests.
+- **Project:** PolarSharp.EcommerceStoreManagement.EntityFrameworkCore
+- **What landed:** `PolarClientOrganizationsApi` PATCHes the writable subset (country, currency, tax behavior, OrganizationDetails) to `/v1/organizations/{id}`. Read-back updates the local mirror for `account_id` / `payout_account_id`. `RefreshPayoutStatusAsync` polls the live read-only fields; transitions `NotStarted → InProgress → Ready`. `BuildBankingSetupDeepLink` returns Polar's dashboard URL (no Stripe API call ever — per DECISIONS.md D-001).
+- **Tests:** `tests/PolarSharp.EcommerceStoreManagement.Tests/PolarClientOrganizationsApiIntegrationTests.cs` — live-sandbox tests gated on `POLAR_SANDBOX_TOKEN`. Service-level FSM + field-set separation logic covered by unit tests against a fake.
+- **Closure note:** Same as V20-002 — TASKS.md status was stale. Corrected 2026-05-20.
 
 ### TASK-V20-005 — Wire IReportSnapshotService to Polar resource endpoints
 
@@ -106,9 +103,9 @@ The v1.2.0 release ships 25 new packages, 12 migration sets, and 441/441 passing
 - **What to do:** As a continuing commission alongside each TASK-V20-001..006: write `[Trait("Category","Integration")]` tests against Polar sandbox for the live flow. Coverage targets:
   - Onboarding: programmatic + OAuth + wizard end-to-end (TASK-V20-006)
   - Catalog publish: idempotency, partial-failure resume, variant + tier expansion, dependency order (TASK-V20-001)
-  - Refunds: full, partial, listing (TASK-V20-002)
-  - License validation: valid, expired-in-grace, revoked, max-activations (TASK-V20-003)
-  - Business profile: PATCH + payout poller (TASK-V20-004)
+  - Refunds: full, partial, listing (TASK-V20-002) ✅ done
+  - License validation: valid, expired-in-grace, revoked, max-activations (TASK-V20-003) ✅ done
+  - Business profile: PATCH + payout poller (TASK-V20-004) ✅ done
   - Reporting snapshot: idempotency, checkpoint advance, pre-aggregate accuracy (TASK-V20-005)
   - Fake-data toggle sync: OFF→ON publish + ON→OFF archive against real sandbox (TASK-V20-007)
   - RLS bypass: raw-connection cross-tenant read blocked (TASK-V20-008)
@@ -157,6 +154,58 @@ Cart / Checkout / Customer services + GuestSessions package + idempotency cache 
 ### TASK-V14-004 — Wallet Phase 20 entry in CHANGELOG `[Unreleased]` ✅ DONE 2026-05-20
 
 - **Status:** Closed. CHANGELOG `[Unreleased]` now carries the Wallet event-store subsection (PrepaidWallets.Abstractions + core + EF Core / Marten providers + funding-source provenance + tenant_id indexing + 124 tests + DocFX article cross-ref). Authored in this session's audit-pass commit.
+
+### TASK-V14-006 — Fix CI Integration job to target the correct test projects ✅ DONE 2026-05-20
+
+- **Status:** Closed. `.github/workflows/ci.yml` Integration step previously ran `dotnet test tests/PolarSharp.IntegrationTests --filter Category=Integration`, which has zero matching tests. Fixed to run `tests/PolarSharp.EcommerceStoreManagement.Tests` + `tests/PolarSharp.Reporting.Tests` (the projects that actually own the live-sandbox tests for V20-002/003/004/005).
+- **Acceptance verified:** On a clean push, CI's "Integration Tests (sandbox)" step now actually executes the ~16 live-Polar tests (when `POLAR_SANDBOX_TOKEN` is provisioned as a GitHub Actions secret).
+
+### TASK-V14-007 — Acquire credentials + upgrade SkippableFact-gated AI provider tests to always-running
+
+- **Status:** Pending — REQUIRES USER ACTION (acquire credentials for 4 AI providers)
+- **Priority:** HIGH — blocks "v1.4.0 testing fully and accurately represents state"
+- **Project:** `tests/PolarSharp.EcommerceStoreManagement.Translation.Tests/LiveProviderIntegrationTests.cs`
+- **Context:** As of 2026-05-20 the live AI translation provider tests are SkippableFact-gated on per-provider API key env vars. Locally and in CI today they skip because credentials are not yet provisioned. User has committed to acquiring credentials for all five providers (Anthropic / OpenAI / Azure OpenAI / Gemini / Grok); once received we circle back and implement the FULL set of tests instead of relying on the [SkippableFact] flags.
+- **What to do (once credentials are in hand):**
+  1. Add the following env vars to .env (and direnv) for local dev: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_DEPLOYMENT`, `GEMINI_API_KEY`, `GROK_API_KEY`.
+  2. Add the same set as GitHub Actions repository secrets so the CI Integration job can run them.
+  3. Extend `.github/workflows/ci.yml` Integration step to also run `tests/PolarSharp.EcommerceStoreManagement.Translation.Tests --filter Category=Integration` with those env vars.
+  4. Rewrite `LiveProviderIntegrationTests.cs` to drop the SkippableFact gates and assert against real provider responses unconditionally.
+  5. Expand coverage beyond the current single-field roundtrip — multi-field translations, larger payloads, error-path coverage (rate limit / auth fail / network timeout).
+- **Acceptance:** All 5 providers run live tests in CI on every push to main; tests fail loudly on any HTTP wire-contract regression; coverage extends beyond single-field roundtrip.
+
+### TASK-V14-008 — Wallet EventStore EFC provider implementations (Phase 21.x)
+
+- **Status:** Pending — Phase 21.x; 5 scaffold packages currently marked IsPackable=false
+- **Priority:** HIGH — blocks "wallet event persistence works on user-chosen provider"
+- **Project:** `PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore.{Sqlite, SqlServer, PostgreSQL, MariaDb, CosmosDb}`
+- **Context:** The 5 provider packages currently have a single extension file each (the `UseXxxWalletEventStore` method) that's a no-op returning `services` unchanged. XML doc explicitly says "Phase 21 ships the registration scaffold; full DbContext + migrations land in Phase 21.x." The base `PolarSharp.PrepaidWallets.EventStore.EntityFrameworkCore` package has real implementation (`EfWalletEventStore`, generic `WalletEventStoreDbContext`, `WalletEventRecord`, `WalletSnapshotRecord`, `BucketsJsonCodec`); only the per-provider plumbing is missing.
+- **What to do:**
+  1. Per provider: implement a provider-specific `XxxWalletEventStoreDbContext` (or wire the generic one with `UseXxx()`).
+  2. Generate initial migrations including the `ix_wallet_events_tenant_id_occurred_at` index (per WTR coordination + DECISIONS.md D-003).
+  3. Provider-specific quirks: MariaDb needs `MariaDbCompatibleHistoryRepository` (Oracle-provider `GET_LOCK` workaround); Cosmos needs `/walletId` partition key + aggressive snapshot threshold per the XML doc; SQLite needs per-tenant `.db` file factory.
+  4. Drop `IsPackable=false` from each csproj as it gains real content.
+  5. Per-provider Testcontainers integration tests covering: schema creation, append-then-load round-trip, idempotency replay, optimistic-concurrency conflict, cross-tenant isolation. Mirror the pattern in `tests/PolarSharp.MultiTenant.EntityFrameworkCore.Tests/Integration/`.
+- **Acceptance:** All 5 providers ship real implementations + paired integration tests; scaffold integrity test no longer counts these as scaffolds; CHANGELOG corrected to reflect honest scope.
+
+### TASK-V14-009 — Wallet Polar bridge implementations (Phase 22.x)
+
+- **Status:** Pending — Phase 22.x; 4 scaffold packages currently marked IsPackable=false
+- **Priority:** HIGH — blocks "wallet has Polar.sh interop"
+- **Project:** `PolarSharp.PrepaidWallets.Polar.{Checkout, GraphQL, Identity, Reporting}` + `PolarSharp.PrepaidWallets.Reporting`
+- **Context:** Per the subagent audit on 2026-05-20, each of the 4 Polar.* bridges is a 25-28 line scaffold file. XML doc on each says "Phase 22 ships the bridge package shell; full impl lands in Phase 22.x" and enumerates the expected types: `PolarWalletCheckoutInterceptor`, `PolarWalletRefundConverter`, `PolarWalletSubscriptionDebitor`, identity-wiring (`ICurrentUser → IWalletIdentityProvider`), reporting + audit log `SaveChangesInterceptor`, GraphQL type extensions.
+- **What to build:**
+  - `PolarSharp.PrepaidWallets.Polar.Checkout` — `PolarWalletCheckoutInterceptor` (wallet-only + hybrid modes per WTR design), `PolarWalletRefundConverter` (Polar refund → wallet credit), `PolarWalletSubscriptionDebitor` (renewal-time wallet debit if wallet covers subscription).
+  - `PolarSharp.PrepaidWallets.Polar.Identity` — `ICurrentUser → IWalletIdentityProvider` adapter so wallet aggregate gets the current authenticated user.
+  - `PolarSharp.PrepaidWallets.Polar.Reporting` — audit log `SaveChangesInterceptor` wiring; reporting integration so wallet events flow to the snapshot tables.
+  - `PolarSharp.PrepaidWallets.Polar.GraphQL` — wallet-aware GraphQL type extensions, audience-scoped.
+  - `PolarSharp.PrepaidWallets.Reporting` (the abstraction) — concrete `IWalletReportingClient` implementation (projection-backed).
+  - Drop `IsPackable=false` on each as it gains real content.
+- **Tests:** Per bridge, integration tests against the live Polar sandbox (gated on `POLAR_SANDBOX_TOKEN` via SkippableFact). Specifically:
+  - Wallet-only checkout: customer with wallet balance covers full purchase; Polar.sh never sees the transaction; assert wallet debit + tenant tax obligation (per WTR Phase 22.5 framework).
+  - Hybrid checkout: wallet covers part, Polar covers rest; assert correct split.
+  - Refund-to-wallet: Polar refund credited back as `RefundAsCredit` wallet event.
+- **Acceptance:** Each bridge ships real implementation + paired tests; scaffold integrity test no longer counts these as scaffolds; CHANGELOG corrected.
 
 ### TASK-V14-005 — Wallet event-store Implementation Narrative
 
