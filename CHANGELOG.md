@@ -6,6 +6,27 @@ and [Common Changelog](https://common-changelog.org) format.
 
 ## [Unreleased]
 
+### Added
+
+#### Storefront core services — `PolarSharp.EcommerceStorefronts` + `.Abstractions` + `.GuestSessions` (v1.4.0 Phase 25)
+
+- **Cart service** (`DefaultStorefrontCartService`) — real implementation replacing the Phase 25 skeleton. Enforces the Case Study 03 server-as-source-of-truth fraud-prevention discipline on every mutation: client unit prices are ignored and re-pulled from the catalog provider, quantities are clamped and cart-size + cart-grand-total caps are enforced server-side, discount codes are recorded but never trusted (the order-processing pipeline's `ApplyDiscountsStage` validates them at checkout time).
+- **Checkout service** (`DefaultStorefrontCheckoutService`) — snapshots the current cart into a persisted `CheckoutSession`; exposes the order-processing pipeline as an `IAsyncEnumerable<CheckoutPipelineEvent>` so the storefront UI can stream progress; falls back to a coherent `CheckoutFailed` event when `AddPolarOrderProcessingPipeline()` has not been called.
+- **Customer service** (`DefaultStorefrontCustomerService`) — gates on `IStorefrontIdentityProvider.IsAuthenticated`, forwards to `IStorefrontCustomerSource`; wallet balance returns zero for guests so the account-area chrome can render uniformly without branching on auth state.
+- **Guest sessions** (`PolarSharp.EcommerceStorefronts.GuestSessions`) — real signed-cookie roundtrip via `IDataProtector.Protect`/`Unprotect`, `GuestSessionMiddleware` resolves + renews on every request, new `HttpContextGuestSessionAccessor` exposes the resolved session to storefront-core services via the abstractions-level `IGuestSessionAccessor`.
+- **Storage seams** — `IStorefrontCartStore` + `IStorefrontCheckoutSessionStore` + `IStorefrontCustomerSource` + `IGuestSessionAccessor` + `CartOwner` discriminated union landed in the abstractions package; in-process defaults (`InMemoryStorefrontCartStore`, `InMemoryStorefrontCheckoutSessionStore`, `NullStorefrontCustomerSource`, `NullGuestSessionAccessor`) ship in the storefront-core package. Production hosts replace any of these by registering an alternative before `AddPolarStorefrontsCore()`.
+- **Idempotency cache** (`IStorefrontIdempotencyCache` + `InMemoryStorefrontIdempotencyCache`) — `AddToCartCommand`, `UpdateQuantityCommand`, and `InitiateCheckoutCommand` honour their `IdempotencyToken`: a retry with a previously-seen token short-circuits to the original response. TTL is `StorefrontOptions.IdempotencyCacheTtl` (default 24h). Production hosts swap in a Redis-backed implementation for multi-process replay safety.
+- **Cart expiry** — every cart save stamps `ExpiresAt = now + StorefrontOptions.CartLifetime` (default 30d, matching `GuestSessionLifetime`); the in-memory store treats expired entries as absent on lookup and lazily prunes them.
+- **Guest-to-customer cart promotion** — new `IStorefrontCartService.PromoteGuestCartAsync(guestSessionId, ct)`. The host calls this immediately after a guest signs in (or signs up) mid-shopping; the guest cart is merged into any existing customer cart on the same tenant by summing quantities for same-product-variant lines, then catalog-revalidated for prices and availability. Lines for newly-unavailable products are silently dropped.
+- **89 unit tests** across two new test projects (`PolarSharp.EcommerceStorefronts.Tests` + `PolarSharp.EcommerceStorefronts.GuestSessions.Tests`), all green.
+- **Documentation** — DocFX article `docs/articles/storefronts-cart-checkout.md` and Implementation Narrative `docs/articles/narratives/storefronts-cart-and-checkout-for-customers.md`; per-package README updates for the three Phase 25 packages.
+
+### Changed
+
+#### Storefront scaffold diagnostic — `PolarSharp.EcommerceStorefronts.AspNetCore`
+
+- `StorefrontScaffoldDiagnosticService` no longer claims Phase 25 services throw `NotImplementedException` (they don't anymore). Demoted from `LogLevel.Critical` to `LogLevel.Warning` and narrowed to flag the remaining scaffolds: the 17 order-processing / subscription-billing / refund-processing pipeline stages (Phase 26), the `NullStorefrontCustomerSource` default, and the in-process default stores. XML doc on `AddPolarStorefronts` updated accordingly.
+
 ## [1.3.0] — 2026-05-13
 
 Feature release. The v1.2.0 store-management surface gains six concrete operator services (refunds, license validation, business profile + Stripe-Connect deep-link, inventory tracking with zero-boundary Polar sync, catalog publisher, reporting snapshot ingester), and the reporting package gains **twelve advanced reports** — eight scoped to a single tenant for merchant dashboards, four cross-tenant for SaaS-operator (AppMasterAdmin) oversight. The v1.1.0 / v1.2.0 packages remain additive-compatible.
