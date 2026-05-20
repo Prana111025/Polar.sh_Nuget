@@ -14,11 +14,25 @@ namespace PolarSharp.EcommerceStorefronts.Cart;
 /// thread-safe but does not survive a process restart — carts disappear on restart,
 /// which is acceptable for guest carts (shoppers re-add) but not for authenticated
 /// carts that the customer expects to persist across visits.
+/// <para>
+/// Honours <see cref="Abstractions.Cart.Cart.ExpiresAt"/>: lookups return
+/// <see cref="StorefrontOption{T}.None"/> for carts past their expiry and lazily prune
+/// the expired entry. Cart expiry is set by the cart service on save (typically
+/// <c>now + StorefrontOptions.CartLifetime</c>).
+/// </para>
 /// </remarks>
 public sealed class InMemoryStorefrontCartStore : IStorefrontCartStore
 {
     private readonly ConcurrentDictionary<string, Abstractions.Cart.Cart> _byOwner = new();
     private readonly ConcurrentDictionary<Guid, string> _ownerByCartId = new();
+    private readonly TimeProvider _clock;
+
+    /// <summary>Initialises the store.</summary>
+    /// <param name="clock">Clock used for expiry computation; defaults to <see cref="TimeProvider.System"/>.</param>
+    public InMemoryStorefrontCartStore(TimeProvider? clock = null)
+    {
+        _clock = clock ?? TimeProvider.System;
+    }
 
     /// <inheritdoc/>
     public Task<StorefrontOption<Abstractions.Cart.Cart>> FindByOwnerAsync(
@@ -28,10 +42,17 @@ public sealed class InMemoryStorefrontCartStore : IStorefrontCartStore
     {
         ct.ThrowIfCancellationRequested();
         var key = BuildKey(owner, tenantId);
-        var found = _byOwner.TryGetValue(key, out var cart)
-            ? StorefrontOption<Abstractions.Cart.Cart>.Some(cart)
-            : StorefrontOption<Abstractions.Cart.Cart>.None;
-        return Task.FromResult(found);
+        if (_byOwner.TryGetValue(key, out var cart) && !IsExpired(cart))
+        {
+            return Task.FromResult(StorefrontOption<Abstractions.Cart.Cart>.Some(cart));
+        }
+        if (cart is not null)
+        {
+            // Lazy prune.
+            _byOwner.TryRemove(key, out _);
+            _ownerByCartId.TryRemove(cart.Id, out _);
+        }
+        return Task.FromResult(StorefrontOption<Abstractions.Cart.Cart>.None);
     }
 
     /// <inheritdoc/>
@@ -71,12 +92,16 @@ public sealed class InMemoryStorefrontCartStore : IStorefrontCartStore
     {
         ct.ThrowIfCancellationRequested();
         if (_ownerByCartId.TryGetValue(cartId, out var key)
-            && _byOwner.TryGetValue(key, out var cart))
+            && _byOwner.TryGetValue(key, out var cart)
+            && !IsExpired(cart))
         {
             return Task.FromResult(StorefrontOption<Abstractions.Cart.Cart>.Some(cart));
         }
         return Task.FromResult(StorefrontOption<Abstractions.Cart.Cart>.None);
     }
+
+    private bool IsExpired(Abstractions.Cart.Cart cart) =>
+        cart.ExpiresAt.HasValue && cart.ExpiresAt.Value <= _clock.GetUtcNow();
 
     private static CartOwner ResolveOwner(Abstractions.Cart.Cart cart)
     {

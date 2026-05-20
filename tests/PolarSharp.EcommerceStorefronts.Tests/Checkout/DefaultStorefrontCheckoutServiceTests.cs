@@ -1,7 +1,6 @@
 using PolarSharp.EcommerceStorefronts.Abstractions;
 using PolarSharp.EcommerceStorefronts.Abstractions.Cart;
 using PolarSharp.EcommerceStorefronts.Abstractions.Checkout;
-using PolarSharp.EcommerceStorefronts.Cart;
 using PolarSharp.EcommerceStorefronts.Checkout;
 using PolarSharp.EcommerceStorefronts.Tests.TestSupport;
 
@@ -21,9 +20,7 @@ public sealed class DefaultStorefrontCheckoutServiceTests
         var cart = cartFx.Build();
         await cart.AddToCartAsync(new AddToCartCommand { ProductId = "p", Quantity = 1 }, default);
 
-        var sessionStore = new InMemoryStorefrontCheckoutSessionStore();
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store, sessionStore, cartFx.Identity, cartFx.GuestSessions, pipeline: null, clock: cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore());
 
         var result = await svc.InitiateCheckoutAsync(new InitiateCheckoutCommand(), default);
 
@@ -45,9 +42,7 @@ public sealed class DefaultStorefrontCheckoutServiceTests
         cartFx.Catalog.WithProduct(FakeCatalogProvider.BuildProduct("p"));
         var cart = cartFx.Build();
         await cart.AddToCartAsync(new AddToCartCommand { ProductId = "p", Quantity = 1 }, default);
-        var sessionStore = new InMemoryStorefrontCheckoutSessionStore();
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store, sessionStore, cartFx.Identity, cartFx.GuestSessions, pipeline: null, clock: cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore());
 
         var result = await svc.InitiateCheckoutAsync(new InitiateCheckoutCommand(), default);
 
@@ -62,9 +57,7 @@ public sealed class DefaultStorefrontCheckoutServiceTests
         cartFx.Catalog.WithProduct(FakeCatalogProvider.BuildProduct("p"));
         var cart = cartFx.Build();
         await cart.AddToCartAsync(new AddToCartCommand { ProductId = "p", Quantity = 1 }, default);
-        var sessionStore = new InMemoryStorefrontCheckoutSessionStore();
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store, sessionStore, cartFx.Identity, cartFx.GuestSessions, pipeline: null, clock: cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore());
 
         var result = await svc.InitiateCheckoutAsync(new InitiateCheckoutCommand
         {
@@ -84,9 +77,7 @@ public sealed class DefaultStorefrontCheckoutServiceTests
         };
         // Force creation of empty cart.
         await cartFx.Build().GetCurrentCartAsync(default);
-        var sessionStore = new InMemoryStorefrontCheckoutSessionStore();
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store, sessionStore, cartFx.Identity, cartFx.GuestSessions, pipeline: null, clock: cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore());
 
         var result = await svc.InitiateCheckoutAsync(new InitiateCheckoutCommand(), default);
 
@@ -103,9 +94,7 @@ public sealed class DefaultStorefrontCheckoutServiceTests
             Identity = TestStorefrontIdentityProvider.SignedInSingleTenant(Guid.NewGuid()),
             GuestSessions = TestGuestSessionAccessor.None,
         };
-        var sessionStore = new InMemoryStorefrontCheckoutSessionStore();
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store, sessionStore, cartFx.Identity, cartFx.GuestSessions, pipeline: null, clock: cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore());
 
         var result = await svc.InitiateCheckoutAsync(new InitiateCheckoutCommand(), default);
 
@@ -117,13 +106,7 @@ public sealed class DefaultStorefrontCheckoutServiceTests
     public async Task GetSession_returns_NotFound_when_session_id_unknown()
     {
         var cartFx = new CartServiceFixture();
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store,
-            new InMemoryStorefrontCheckoutSessionStore(),
-            cartFx.Identity,
-            cartFx.GuestSessions,
-            pipeline: null,
-            clock: cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore());
 
         var result = await svc.GetSessionAsync(Guid.NewGuid(), default);
 
@@ -135,13 +118,7 @@ public sealed class DefaultStorefrontCheckoutServiceTests
     public async Task ProcessCheckout_yields_CheckoutFailed_when_pipeline_is_not_registered()
     {
         var cartFx = new CartServiceFixture();
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store,
-            new InMemoryStorefrontCheckoutSessionStore(),
-            cartFx.Identity,
-            cartFx.GuestSessions,
-            pipeline: null,
-            clock: cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore());
 
         var events = new List<CheckoutPipelineEvent>();
         await foreach (var evt in svc.ProcessCheckoutAsync(Guid.NewGuid(), default))
@@ -159,13 +136,7 @@ public sealed class DefaultStorefrontCheckoutServiceTests
     {
         var cartFx = new CartServiceFixture();
         var pipeline = TestPipelineBuilder.Build();
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store,
-            new InMemoryStorefrontCheckoutSessionStore(),
-            cartFx.Identity,
-            cartFx.GuestSessions,
-            pipeline,
-            cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore(), pipeline);
 
         var events = new List<CheckoutPipelineEvent>();
         await foreach (var evt in svc.ProcessCheckoutAsync(Guid.NewGuid(), default))
@@ -175,6 +146,32 @@ public sealed class DefaultStorefrontCheckoutServiceTests
 
         var failed = Assert.Single(events.OfType<CheckoutFailed>());
         Assert.IsType<StorefrontNotFoundError>(failed.Error);
+    }
+
+    [Fact]
+    public async Task InitiateCheckout_with_idempotency_token_short_circuits_on_replay()
+    {
+        var cartFx = new CartServiceFixture
+        {
+            Identity = TestStorefrontIdentityProvider.SignedInSingleTenant(Guid.NewGuid()),
+            GuestSessions = TestGuestSessionAccessor.None,
+        };
+        cartFx.Catalog.WithProduct(FakeCatalogProvider.BuildProduct("p", unitAmountCents: 1000));
+        var cart = cartFx.Build();
+        await cart.AddToCartAsync(new AddToCartCommand { ProductId = "p", Quantity = 1 }, default);
+        var svc = cartFx.BuildCheckoutService(new InMemoryStorefrontCheckoutSessionStore());
+
+        var first = await svc.InitiateCheckoutAsync(new InitiateCheckoutCommand
+        {
+            IdempotencyToken = "tok-1",
+        }, default);
+        var second = await svc.InitiateCheckoutAsync(new InitiateCheckoutCommand
+        {
+            IdempotencyToken = "tok-1",
+        }, default);
+
+        Assert.True(first.IsSuccess && second.IsSuccess);
+        Assert.Equal(Unwrap(first).Id, Unwrap(second).Id);
     }
 
     private static T Unwrap<T>(StorefrontResult<T> r) =>

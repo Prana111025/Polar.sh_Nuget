@@ -28,4 +28,21 @@ public sealed class StorefrontOptions
 
     /// <summary>HTTP header carrying the cart idempotency token.</summary>
     public string CartIdempotencyTokenHeader { get; set; } = "X-Storefront-Idempotency";
+
+    /// <summary>
+    /// How long a saved cart is honoured before it is treated as expired. Cart loads
+    /// past this window return None from the store (a fresh empty cart is created on
+    /// the next call). Default matches <see cref="GuestSessionLifetime"/> so a guest
+    /// cart and the cookie that owns it expire together.
+    /// </summary>
+    public TimeSpan CartLifetime { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// How long an idempotency-keyed response is replayable. A retry within this
+    /// window short-circuits to the original response; after this window the cache
+    /// forgets the key. Defaults to 24 hours — long enough to span any reasonable
+    /// network-blip retry, short enough that the same idempotency key reused days
+    /// later is treated as a fresh request.
+    /// </summary>
+    public TimeSpan IdempotencyCacheTtl { get; set; } = TimeSpan.FromHours(24);
 }

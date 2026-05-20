@@ -4,28 +4,35 @@ using Microsoft.Extensions.Logging;
 namespace PolarSharp.EcommerceStorefronts.AspNetCore.Diagnostics;
 
 /// <summary>
-/// IHostedService that emits a <see cref="LogLevel.Critical"/> diagnostic on host startup
-/// listing every storefront service + pipeline stage that is currently a scaffold. The
-/// log fires once at startup so a host operator who calls
+/// IHostedService that emits a <see cref="LogLevel.Warning"/> diagnostic on host startup
+/// listing the storefront-feature pieces that are still scaffold-state. The log fires
+/// once at startup so a host operator who calls
 /// <see cref="Extensions.PolarStorefrontsServiceCollectionExtensions.AddPolarStorefronts"/>
-/// gets a clear, unmissable signal that the registered service tree is NOT production-ready
-/// — pre-Phase 25.x / 26.x the cart, checkout, customer, guest-session, and pipeline
-/// implementations either throw <see cref="NotImplementedException"/> or no-op pass-through.
+/// gets a clear signal about which capabilities require provider wiring before going
+/// to production.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The diagnostic is registered automatically by <c>AddPolarStorefronts</c>. Hosts that
-/// know what they're doing and don't want the warning (e.g. running scaffold demos in CI)
-/// can suppress by registering their own <c>IHostedService</c> implementation with the
-/// same type BEFORE calling <c>AddPolarStorefronts</c> — the <c>TryAddHostedService</c>
-/// semantics would skip the default, OR more pragmatically the host can filter the log
-/// category <c>PolarSharp.EcommerceStorefronts.AspNetCore.Diagnostics.StorefrontScaffoldDiagnosticService</c>
-/// out of their logging configuration.
+/// As of v1.4.0 Phase 25 the storefront-core cart, checkout, customer, and guest-session
+/// services ship real implementations — they no longer throw
+/// <see cref="NotImplementedException"/>. What remains scaffold-state is:
 /// </para>
+/// <list type="bullet">
+/// <item>The 17 order-processing / subscription-billing / refund-processing pipeline
+/// stages (Phase 26) — they no-op pass-through with a debug log.</item>
+/// <item>The default <c>IStorefrontCustomerSource</c> (<c>NullStorefrontCustomerSource</c>),
+/// which returns empty / NotFound for every read until a Polar bridge supplies a real
+/// source (Phase 31).</item>
+/// <item>The default <c>IStorefrontCartStore</c> +
+/// <c>IStorefrontCheckoutSessionStore</c> + <c>IStorefrontIdempotencyCache</c> are
+/// in-process and don't survive a process restart — production multi-server hosts plug
+/// EF Core / Redis-backed replacements.</item>
+/// </list>
 /// <para>
-/// Removed when v1.4.0 ships real implementations: when every line in the diagnostic list
-/// is no longer accurate, this hosted service is deleted and the registration call in
-/// <c>AddPolarStorefronts</c> is removed.
+/// Suppress the warning by filtering the log category
+/// <c>PolarSharp.EcommerceStorefronts.AspNetCore.Diagnostics.StorefrontScaffoldDiagnosticService</c>
+/// in your logging configuration once you've consciously wired each piece to a
+/// production-grade implementation.
 /// </para>
 /// </remarks>
 public sealed class StorefrontScaffoldDiagnosticService : IHostedService
@@ -33,7 +40,7 @@ public sealed class StorefrontScaffoldDiagnosticService : IHostedService
     private readonly ILogger<StorefrontScaffoldDiagnosticService> _logger;
 
     /// <summary>Initializes a new diagnostic service.</summary>
-    /// <param name="logger">Logger used for the Critical-level diagnostic message.</param>
+    /// <param name="logger">Logger used for the Warning-level diagnostic message.</param>
     public StorefrontScaffoldDiagnosticService(ILogger<StorefrontScaffoldDiagnosticService> logger)
     {
         ArgumentNullException.ThrowIfNull(logger);
@@ -43,19 +50,20 @@ public sealed class StorefrontScaffoldDiagnosticService : IHostedService
     /// <inheritdoc/>
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogCritical(
-            "PolarSharp.EcommerceStorefronts is SCAFFOLD-ONLY pre-v1.4.0. AddPolarStorefronts has " +
-            "registered service skeletons that will throw NotImplementedException on first call " +
-            "(IStorefrontCartService: 8 methods; IStorefrontCustomerService: 7; IStorefrontCheckoutService: 2; " +
-            "IGuestSessionService: 3) and 17 pipeline stages that no-op pass-through with a debug log " +
-            "(OrderProcessing: ValidateLineItems, CheckInventory, ApplyDiscounts, QuoteTax, QuoteShipping, " +
-            "CapturePayment, Fulfill, Notify; SubscriptionBilling: ValidateSubscription, ApplyProration, " +
-            "CheckPaymentMethod, CapturePayment, Notify; RefundProcessing: ValidateRefundEligibility, " +
-            "ComputeRefundAmount, ExecuteRefund, Notify). DO NOT ship to production. " +
-            "Track implementation status against Phase 25.x (services) + Phase 26.x (pipeline stages). " +
-            "Suppress this message by filtering the log category " +
+        _logger.LogWarning(
+            "PolarSharp.EcommerceStorefronts Phase 25 services (cart, checkout, customer, " +
+            "guest-session) are wired and functional. Remaining scaffolds: " +
+            "(1) the 17 order-processing/subscription-billing/refund-processing pipeline " +
+            "stages no-op pass-through (Phase 26); " +
+            "(2) the default IStorefrontCustomerSource is NullStorefrontCustomerSource — " +
+            "register a real source via the Polar.Reporting bridge or your own impl before " +
+            "exposing customer self-service to real users; " +
+            "(3) the default IStorefrontCartStore, IStorefrontCheckoutSessionStore, and " +
+            "IStorefrontIdempotencyCache are in-process and won't survive a restart — swap " +
+            "in EF Core / Redis-backed replacements for production multi-server deployments. " +
+            "Suppress this message by filtering log category " +
             "'PolarSharp.EcommerceStorefronts.AspNetCore.Diagnostics.StorefrontScaffoldDiagnosticService' " +
-            "in your logging configuration.");
+            "once each piece is consciously addressed.");
         return Task.CompletedTask;
     }
 

@@ -51,4 +51,23 @@ public interface IStorefrontCartService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The updated cart.</returns>
     Task<StorefrontResult<Cart>> SetShippingAddressAsync(ShippingAddress address, CancellationToken ct);
+
+    /// <summary>
+    /// Transfers the cart owned by guest session <paramref name="guestSessionId"/> onto
+    /// the current authenticated customer, merging into any existing customer cart on
+    /// the same tenant scope. Called by the host after a guest signs in (or signs up)
+    /// mid-shopping so the cart they built as a guest is not lost.
+    /// </summary>
+    /// <param name="guestSessionId">The guest session whose cart should be promoted.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// The resulting cart owned by the current customer. If both a customer cart and a
+    /// guest cart existed, their lines are merged: same-product/variant lines have their
+    /// quantities summed, distinct lines are kept side by side. Unit prices are
+    /// re-validated against the catalog (per the server-as-source-of-truth fraud
+    /// discipline). Returns <see cref="StorefrontAuthenticationError"/> when no
+    /// authenticated customer is resolved, or success with the customer's existing cart
+    /// when the guest cart is absent / empty.
+    /// </returns>
+    Task<StorefrontResult<Cart>> PromoteGuestCartAsync(Guid guestSessionId, CancellationToken ct);
 }

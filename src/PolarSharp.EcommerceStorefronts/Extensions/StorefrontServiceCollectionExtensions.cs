@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using PolarSharp.EcommerceStorefronts.Abstractions;
 using PolarSharp.EcommerceStorefronts.Abstractions.Cart;
 using PolarSharp.EcommerceStorefronts.Abstractions.Checkout;
 using PolarSharp.EcommerceStorefronts.Abstractions.Customers;
@@ -66,6 +67,10 @@ public static class StorefrontServiceCollectionExtensions
         services.TryAddSingleton<IStorefrontCartStore, InMemoryStorefrontCartStore>();
         services.TryAddSingleton<IStorefrontCheckoutSessionStore, InMemoryStorefrontCheckoutSessionStore>();
 
+        // Idempotency cache — singleton so retried mutations across requests see the
+        // same cache. Production hosts swap in a Redis-backed implementation.
+        services.TryAddSingleton<IStorefrontIdempotencyCache, InMemoryStorefrontIdempotencyCache>();
+
         // Customer source — Null default; hosts plug a real source via the
         // PolarSharp.EcommerceStorefronts.Polar.Reporting bridge or a host-specific impl.
         services.TryAddScoped<IStorefrontCustomerSource, NullStorefrontCustomerSource>();
@@ -81,6 +86,8 @@ public static class StorefrontServiceCollectionExtensions
                 sp.GetRequiredService<IStorefrontCheckoutSessionStore>(),
                 sp.GetRequiredService<IStorefrontIdentityProvider>(),
                 sp.GetRequiredService<IGuestSessionAccessor>(),
+                sp.GetRequiredService<IStorefrontIdempotencyCache>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<StorefrontOptions>>(),
                 sp.GetService<OrderProcessingPipeline>(),
                 sp.GetRequiredService<TimeProvider>()));
 

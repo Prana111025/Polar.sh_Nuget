@@ -69,8 +69,7 @@ public sealed class ProcessCheckoutPipelineTests
 
         var sessionStore = new InMemoryStorefrontCheckoutSessionStore();
         var pipeline = TestPipelineBuilder.Build(stage);
-        var svc = new DefaultStorefrontCheckoutService(
-            cartFx.Store, sessionStore, cartFx.Identity, cartFx.GuestSessions, pipeline, cartFx.Clock);
+        var svc = cartFx.BuildCheckoutService(sessionStore, pipeline);
         var session = (await svc.InitiateCheckoutAsync(new InitiateCheckoutCommand(), default))
             .Match(s => s, e => throw new InvalidOperationException(e.Message));
         return (svc, session.Id, sessionStore);
